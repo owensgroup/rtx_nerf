@@ -31,7 +31,7 @@ public:
     DataLoader(std::vector<cv::Mat> images, std::vector<cv::Mat> poses, 
         float focal_length, int height, int width, int batch_size, int num_workers);
     
-    // get batch 
+    // gets the next batch for this epoch
     std::vector<cv::Mat> getBatch();
     bool hasNextBatch();
     
@@ -39,6 +39,9 @@ private:
     std::vector<int> order;
     int curr_index;
     int num_images;
+    // shuffle gets a random order of indices to batch data
+    shuffle();
+
 };
 
 struct Ray
