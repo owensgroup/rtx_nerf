@@ -38,24 +38,9 @@ add_compile_definitions(TCNN_MIN_GPU_ARCH=70)
 include_directories(${JSON_INC_PATH}
                     ${CMAKE_SOURCE_DIR}/loader
                     ${CMAKE_SOURCE_DIR}/rtx
+                    ${CMAKE_SOURCE_DIR}/common/
                     ${OptiX_INCLUDE}
                     ${CMAKE_BINARY_DIR}
-                    # ${OpenCV_SOURCE_DIR}/include
-                    # ${OpenCV_SOURCE_DIR}/modules/core/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/calib3d/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/features2d/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/flann/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/gapi/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/imgcodecs/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/imgproc/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/ml/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/objdetect/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/photo/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/stitching/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/video/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/videoio/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/dnn/include/
-                    # ${OpenCV_SOURCE_DIR}/modules/highgui/include/
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/include
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/dependencies/
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/dependencies/fmt/include)
@@ -65,6 +50,8 @@ include(PTXUtilities)
 # Add your source files
 set(SOURCES
     main.cu
+    rtx/src/optixPrograms.cu
+    rtx/src/rtxFunctions.cpp
     #loader/data_loader.cpp
 )
 

@@ -17,6 +17,9 @@
 #include "tiny-cuda-nn/common.h"
 #include "tiny-cuda-nn/gpu_matrix.h"
 #include <json/json.h>
+#include "rtx/include/params.h"
+#include "rtx/include/rtxFunctions.h"
+
 // #include "data_loader.h"
 // #include "transform_loader.h"
 
@@ -181,66 +184,143 @@ __global__ void print_batch(float* batch, int batch_size, int image_size) {
 #define EPOCHS 10
 #define BATCH_SIZE tcnn::batch_size_granularity
 #define DATASET_SIZE 1000
+
+RTXDataHolder *rtx_dataholder;
+uint32_t width = 8u;
+uint32_t height = 8u;
+uint32_t depth = 8u;
 int main() {
-    // load data from files
-    // TODO: take images and poses from json and load into DataLoader
-    int num_epochs = EPOCHS;
-    int batch_size = BATCH_SIZE;
-    size_t image_size = 800*800*4;
+    // // load data from files
+    // // TODO: take images and poses from json and load into DataLoader
+    // int num_epochs = EPOCHS;
+    // int batch_size = BATCH_SIZE;
+    // size_t image_size = 800*800*4;
 
-    std::vector<ImageDataset> datasets = load_data(SceneType::SYNTHETIC, SceneName::LEGO);
-    std::printf("BATCH SIZE GRANULARITY %d \n", tcnn::batch_size_granularity);
-    std::printf("IMAGES IN TRAINING DATASET: %d\n", datasets[0].images.size());
-    // calculate the number of training iterations in an epoch given the batch size
-    int num_batches = datasets[0].images.size() / batch_size + 1;
-    // calculate the total number of training iterations
-    // get batch from dataloaders
-    // get training dataset from datasets
-    std::vector<float*> images = datasets[0].images;
-    std::vector<float*> poses = datasets[0].poses;
+    // std::vector<ImageDataset> datasets = load_data(SceneType::SYNTHETIC, SceneName::LEGO);
+    // std::printf("BATCH SIZE GRANULARITY %d \n", tcnn::batch_size_granularity);
+    // std::printf("IMAGES IN TRAINING DATASET: %d\n", datasets[0].images.size());
+    // // calculate the number of training iterations in an epoch given the batch size
+    // int num_batches = datasets[0].images.size() / batch_size + 1;
+    // // calculate the total number of training iterations
+    // // get batch from dataloaders
+    // // get training dataset from datasets
+    // std::vector<float*> images = datasets[0].images;
+    // std::vector<float*> poses = datasets[0].poses;
     
-    auto training_set = datasets[0];
+    // auto training_set = datasets[0];
     
-    for (int j = 0; j < num_epochs; ++j) {
-        std::printf("Start training loop epoch %d\n", j);
+    // for (int j = 0; j < num_epochs; ++j) {
+    //     std::printf("Start training loop epoch %d\n", j);
 
-        // instantiate number of streams according to the number of batches
-        std::vector<cudaStream_t> streams(num_batches);
-        for (auto& stream : streams) {
-            cudaStreamCreate(&stream);
-        }
+    //     // instantiate number of streams according to the number of batches
+    //     std::vector<cudaStream_t> streams(num_batches);
+    //     for (auto& stream : streams) {
+    //         cudaStreamCreate(&stream);
+    //     }
 
-        // instantiate batch and predicted output matrices
-        tcnn::GPUMatrix<float> batch(batch_size, image_size);
-        tcnn::GPUMatrix<float> predicted_output(batch_size, image_size);
-        tcnn::GPUMatrix<float> poses(batch_size, 16);
+    //     // instantiate batch and predicted output matrices
+    //     tcnn::GPUMatrix<float> batch(batch_size, image_size);
+    //     tcnn::GPUMatrix<float> predicted_output(batch_size, image_size);
+    //     tcnn::GPUMatrix<float> poses(batch_size, 16);
         
-        float* batch_dev = batch.data();
-        float* predicted_output_dev = predicted_output.data();
-        float* poses_dev = poses.data();
+    //     float* batch_dev = batch.data();
+    //     float* predicted_output_dev = predicted_output.data();
+    //     float* poses_dev = poses.data();
 
-        int current_batch_size = 0;
-        int current_batch = 0;
-        for (int i = 0; i < images.size(); ++i) {
-            //std::printf("Adding image %d to batch %d\n", i, current_batch);
-            //std::memcpy(batch_host.data() + current_batch_size * image_size, images[i], image_size * sizeof(float));
-            cudaMemcpyAsync(batch_dev + current_batch_size * image_size, images[i], image_size * sizeof(float), cudaMemcpyHostToDevice, streams[current_batch]);
-            current_batch_size += 1;
-            if (current_batch_size >= batch_size) {
-                current_batch_size = 0;
-                //printf("Launching kernel for batch %d current_batch\n", current_batch);
-                print_batch<<<1, 1, 0, streams[current_batch]>>>(batch_dev, batch_size, image_size);
-                //model.trainer->training_step(predicted_output, batch, &loss);
-                current_batch ++; 
-            }
-        }
-        if (current_batch_size > 0) {
-            std::printf("Launching kernel for batch %d current_batch\n", current_batch);
-            print_batch<<<1, 1, 0, streams[current_batch]>>>(batch_dev, batch_size, image_size);
-            cudaStreamSynchronize(streams[current_batch]);
-            current_batch++;
-        }
-    }
+    //     int current_batch_size = 0;
+    //     int current_batch = 0;
+    //     for (int i = 0; i < images.size(); ++i) {
+    //         //std::printf("Adding image %d to batch %d\n", i, current_batch);
+    //         //std::memcpy(batch_host.data() + current_batch_size * image_size, images[i], image_size * sizeof(float));
+    //         cudaMemcpyAsync(batch_dev + current_batch_size * image_size, images[i], image_size * sizeof(float), cudaMemcpyHostToDevice, streams[current_batch]);
+    //         current_batch_size += 1;
+    //         if (current_batch_size >= batch_size) {
+    //             current_batch_size = 0;
+    //             //printf("Launching kernel for batch %d current_batch\n", current_batch);
+    //             print_batch<<<1, 1, 0, streams[current_batch]>>>(batch_dev, batch_size, image_size);
+    //             //model.trainer->training_step(predicted_output, batch, &loss);
+    //             current_batch ++; 
+    //         }
+    //     }
+    //     if (current_batch_size > 0) {
+    //         std::printf("Launching kernel for batch %d current_batch\n", current_batch);
+    //         print_batch<<<1, 1, 0, streams[current_batch]>>>(batch_dev, batch_size, image_size);
+    //         cudaStreamSynchronize(streams[current_batch]);
+    //         current_batch++;
+    //     }
+    // }
+
+    std::string volume_file = OBJ_DIR "wavelet.txt";
+    std::string ptx_filename = BUILD_DIR "/ptx/optixPrograms.ptx";
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
+
+    rtx_dataholder = new RTXDataHolder();
+    std::cout << "Initializing Context \n";
+    rtx_dataholder->initContext();
+    std::cout << "Reading PTX file and creating modules \n";
+    rtx_dataholder->createModule(ptx_filename);
+    std::cout << "Creating Optix Program Groups \n";
+    rtx_dataholder->createProgramGroups();
+    std::cout << "Linking Pipeline \n";
+    rtx_dataholder->linkPipeline();
+    std::cout << "Building Shader Binding Table (SBT) \n";
+    rtx_dataholder->buildSBT();
+
+    std::vector<float3> vertices;
+    std::vector<uint3> triangles;
+    std::cout << "Building Acceleration Structure \n";
+    OptixAabb aabb_box = rtx_dataholder->buildAccelerationStructure(
+        volume_file, vertices, triangles);
+
+    // calculate delta
+    float3 delta = make_float3((aabb_box.maxX - aabb_box.minX) / width,
+                                (aabb_box.maxY - aabb_box.minY) / height,
+                                (aabb_box.maxZ - aabb_box.minZ) / depth);
+    float3 min_point = make_float3(aabb_box.minX, aabb_box.minY, aabb_box.minZ);
+    float3 max_point = make_float3(aabb_box.maxX, aabb_box.maxY, aabb_box.maxZ);
+
+    float *d_output;
+    CUDA_CHECK(cudaMalloc((void **)&d_output, width * height * sizeof(float)));
+    CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
+
+    // Algorithmic parameters and data pointers used in GPU program
+    Params params;
+    params.min_point = min_point;
+    params.max_point = max_point;
+    params.delta = delta;
+    params.handle = rtx_dataholder->gas_handle;
+    params.width = width;
+    params.height = height;
+    params.depth = depth;
+    params.output = d_output;
+
+    Params *d_param;
+    CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
+    CUDA_CHECK(
+        cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
+
+    const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
+    std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
+    OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, stream,
+                            reinterpret_cast<CUdeviceptr>(d_param),
+                            sizeof(Params), &sbt_ray_march, width, height, 1));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
+    const OptixShaderBindingTable &sbt_ray_sample =
+        rtx_dataholder->sbt_ray_sample;
+    std::cout << "Launching Ray Tracer in Ray Sample Mode \n";
+    OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_sample, stream,
+                            reinterpret_cast<CUdeviceptr>(d_param),
+                            sizeof(Params), &sbt_ray_march, width, height,
+                            depth));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    std::cout << "Cleaning up ... \n";
+    CUDA_CHECK(cudaFree(d_output));
+    CUDA_CHECK(cudaFree(d_param));
+    delete rtx_dataholder;
 
    
     
