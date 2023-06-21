@@ -26,7 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "params.hpp"
+#include "params.h"
 #include <optix.h>
 
 extern "C" static __constant__ Params params;

@@ -10,10 +10,12 @@
 #include "optix_function_table_definition.h"
 #include "optix_stubs.h"
 #include "optix.h"
+#include "optix_types.h"
 
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image.h"
-
+#include "stb_image_write.h"
 #include "tiny-cuda-nn/common.h"
 #include "tiny-cuda-nn/gpu_matrix.h"
 #include <json/json.h>
@@ -178,7 +180,30 @@ __global__ void print_batch(float* batch, int batch_size, int image_size) {
     // }
 }
 
+// Creates a grid of Axis-aligned bounding boxes with specified resolution
+// Bounding box coordinates are specified in normalized coordinates from -1 to 1
+std::vector<OptixAabb> make_grid(int resolution) {
+    std::vector<OptixAabb> grid;
 
+    
+    float box_length = 2.0f/ (float)resolution;
+    for(int x = 0; x < resolution; x++) {
+        for(int y = 0; y < resolution; y++) {
+            for(int z = 0; z < resolution; z++) {
+                OptixAabb aabb;
+                aabb.minX = -1.0f + (float)x * box_length;
+                aabb.maxX = -1.0f + x * box_length + box_length;
+                aabb.minY = -1.0f + y * box_length;
+                aabb.maxY = -1.0f + y * box_length + box_length;
+                aabb.minZ = -1.0f + z * box_length;
+                aabb.maxZ = -1.0f + z * box_length + box_length;
+                grid.push_back(aabb);
+
+            }
+        }
+    }
+    return grid;
+}
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
@@ -189,6 +214,7 @@ RTXDataHolder *rtx_dataholder;
 uint32_t width = 8u;
 uint32_t height = 8u;
 uint32_t depth = 8u;
+uint32_t initial_grid_resolution = 4;
 int main() {
     // // load data from files
     // // TODO: take images and poses from json and load into DataLoader
@@ -249,8 +275,9 @@ int main() {
     //         current_batch++;
     //     }
     // }
+    std::vector<OptixAabb> grid = make_grid(initial_grid_resolution);
 
-    std::string volume_file = OBJ_DIR "wavelet.txt";
+    
     std::string ptx_filename = BUILD_DIR "/ptx/optixPrograms.ptx";
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
@@ -316,13 +343,18 @@ int main() {
                             sizeof(Params), &sbt_ray_march, width, height,
                             depth));
     CUDA_CHECK(cudaStreamSynchronize(stream));
-
+    float *h_output = new float[width * height];
+    CUDA_CHECK(cudaMemcpy(h_output, d_output, width * height * sizeof(float),
+                           cudaMemcpyDeviceToHost));
+                        
+    stbi_write_png("test.png", width, height, 1, h_output, width);
     std::cout << "Cleaning up ... \n";
     CUDA_CHECK(cudaFree(d_output));
     CUDA_CHECK(cudaFree(d_param));
     delete rtx_dataholder;
+    
+    loop through aabb's in grid and print their values
 
-   
     
     return 0;
 }

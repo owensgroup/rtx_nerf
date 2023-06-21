@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 include(FetchContent)
-project(optix_nerf LANGUAGES CXX CUDA)
+project(optx_nerf LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 17)
 enable_language(CUDA)
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
@@ -37,22 +37,22 @@ add_compile_definitions(TCNN_MIN_GPU_ARCH=70)
 
 include_directories(${JSON_INC_PATH}
                     ${CMAKE_SOURCE_DIR}/loader
-                    ${CMAKE_SOURCE_DIR}/rtx
+                    ${CMAKE_SOURCE_DIR}/rtx/include
                     ${CMAKE_SOURCE_DIR}/common/
                     ${OptiX_INCLUDE}
                     ${CMAKE_BINARY_DIR}
+                    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/include
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/dependencies/
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/dependencies/fmt/include)
 include(PTXUtilities)
 
-
 # Add your source files
 set(SOURCES
     main.cu
-    rtx/src/optixPrograms.cu
     rtx/src/rtxFunctions.cpp
     #loader/data_loader.cpp
+    common/common.cpp
 )
 
 # Create the executable
@@ -79,3 +79,5 @@ target_link_libraries(optx_nerf jsoncpp_lib cuda ${OptiX_LIBRARY}
             # ${OpenCV_BINARY_DIR}/lib/libopencv_dnn.a
             ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/libtiny-cuda-nn.a
             ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/dependencies/fmt/libfmt.a)
+
+add_ptx_targets(optx_nerf optixPrograms)

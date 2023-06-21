@@ -32,12 +32,10 @@
 #include <limits>
 
 #include <optix.h>
-#include <optix_function_table_definition.h>
 
-#include "common/common.h"
+#include "common.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
-#include "common/volume_reader.h"
 
 void RTXDataHolder::initContext() {
   CUDA_CHECK(cudaFree(0)); // Initializes CUDA context
@@ -74,7 +72,7 @@ void RTXDataHolder::createModule(const std::string ptx_filename) {
   pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
   pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
 
-  OPTIX_CHECK(optixModuleCreateFromPTX(optix_context, &module_compile_options,
+  OPTIX_CHECK(optixModuleCreate(optix_context, &module_compile_options,
                                        &pipeline_compile_options, ptx.c_str(),
                                        ptx.size(), nullptr, nullptr, &module));
 }
@@ -171,7 +169,7 @@ void RTXDataHolder::linkPipeline() {
     // This controls recursive depth of ray tracing. In this example we dont
     // have recursive trace.
     pipeline_link_options.maxTraceDepth = 1;
-    pipeline_link_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+    //pipeline_link_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
 
     OPTIX_CHECK(optixPipelineCreate(
         optix_context, &pipeline_compile_options, &pipeline_link_options,
@@ -189,7 +187,7 @@ void RTXDataHolder::linkPipeline() {
     // This controls recursive depth of ray tracing. In this example we dont
     // have recursive trace.
     pipeline_link_options.maxTraceDepth = 1;
-    pipeline_link_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+    //pipeline_link_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
     OPTIX_CHECK(optixPipelineCreate(
         optix_context, &pipeline_compile_options, &pipeline_link_options,
         program_groups, sizeof(program_groups) / sizeof(program_groups[0]),
@@ -273,6 +271,7 @@ void RTXDataHolder::buildSBT() {
     sbt_ray_sample.hitgroupRecordCount = 1;
   }
 }
+
 
 OptixAabb
 RTXDataHolder::buildAccelerationStructure(const std::string obj_filename,
@@ -392,7 +391,7 @@ OptixAabb RTXDataHolder::read_volume_mesh(const std::string &vol_filename,
   OptixAabb aabb;
   aabb.minX = aabb.minY = aabb.minZ = std::numeric_limits<float>::max();
   aabb.maxX = aabb.maxY = aabb.maxZ = -std::numeric_limits<float>::max();
-  read_volume(vertices, triangles, vol_filename);
+  read_volume_mesh(vol_filename, vertices, triangles);
   for (int i = 0; i < vertices.size(); i++) {
     float3 &vertex = vertices[i];
     // Update aabb

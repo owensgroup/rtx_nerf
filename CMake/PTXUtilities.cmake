@@ -43,7 +43,7 @@ function(add_ptx_targets project names)
 
   # Create PTX objects
   foreach(cur_name ${names})
-    add_library(${project}_${cur_name} OBJECT src/${cur_name}.cu)
+    add_library(${project}_${cur_name} OBJECT rtx/src/${cur_name}.cu)
     set_target_properties(${project}_${cur_name} PROPERTIES CUDA_PTX_COMPILATION ON)
     add_dependencies(${project} ${project}_${cur_name})
 

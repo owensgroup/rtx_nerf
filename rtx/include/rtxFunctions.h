@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include "params.hpp"
+#include "params.h"
 
 #include <cmath>
 #include <fstream>
@@ -42,7 +42,7 @@
 #include <optix.h>
 #include <optix_stubs.h>
 
-#include "common/common.h"
+#include "common.h"
 
 template <typename IntegerType>
 __device__ __host__ IntegerType roundUp(IntegerType x, IntegerType y) {
@@ -86,6 +86,7 @@ struct RTXDataHolder {
   void createProgramGroups();
   void linkPipeline();
   void buildSBT();
+  void initAccelStruct(std::vector<OptixAabb> &grid);
   OptixAabb buildAccelerationStructure(const std::string obj_filename,
                                        std::vector<float3> &vertices,
                                        std::vector<uint3> &triangles);
