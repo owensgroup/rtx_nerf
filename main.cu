@@ -214,7 +214,12 @@ RTXDataHolder *rtx_dataholder;
 uint32_t width = 8u;
 uint32_t height = 8u;
 uint32_t depth = 8u;
-uint32_t initial_grid_resolution = 4;
+uint32_t initial_grid_resolution = 8u;
+
+uint32_t image_width = 800u;
+uint32_t image_height = 800u;
+
+
 int main() {
     // // load data from files
     // // TODO: take images and poses from json and load into DataLoader
@@ -276,7 +281,11 @@ int main() {
     //     }
     // }
     std::vector<OptixAabb> grid = make_grid(initial_grid_resolution);
-
+    float transform_matrix[] = {
+        -0.9999021887779236,0.004192245192825794,-0.013345719315111637,-0.05379832163453102,
+        -0.013988681137561798, -0.2996590733528137, 0.95394366979599, 3.845470428466797,
+        -4.656612873077393e-10, 0.9540371894836426, 0.29968830943107605, 1.2080823183059692,
+        0.0, 0.0, 0.0, 1.0};
     
     std::string ptx_filename = BUILD_DIR "/ptx/optixPrograms.ptx";
     cudaStream_t stream;
@@ -290,15 +299,14 @@ int main() {
     std::cout << "Creating Optix Program Groups \n";
     rtx_dataholder->createProgramGroups();
     std::cout << "Linking Pipeline \n";
-    rtx_dataholder->linkPipeline();
+    rtx_dataholder->linkPipeline(false);
     std::cout << "Building Shader Binding Table (SBT) \n";
     rtx_dataholder->buildSBT();
 
-    std::vector<float3> vertices;
-    std::vector<uint3> triangles;
+
     std::cout << "Building Acceleration Structure \n";
-    OptixAabb aabb_box = rtx_dataholder->buildAccelerationStructure(
-        volume_file, vertices, triangles);
+    rtx_dataholder->initAccelerationStructure(grid);
+    
 
     // calculate delta
     float3 delta = make_float3((aabb_box.maxX - aabb_box.minX) / width,
@@ -311,6 +319,19 @@ int main() {
     CUDA_CHECK(cudaMalloc((void **)&d_output, width * height * sizeof(float)));
     CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
 
+    float3 *d_start_points;
+    float3 *d_end_points;
+    CUDA_CHECK(cudaMalloc((void **)&d_start_points, image_width * image_height * width * depth * height * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void **)&d_end_points, image_width * image_height * width * depth * height * sizeof(float3)));
+    CUDA_CHECK(cudaMemset(d_start_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
+    CUDA_CHECK(cudaMemset(d_end_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
+
+    int numPrimitives = grid.size();
+    OptixAabb* d_aabbBuffer;
+    cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
+    cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
+      cudaMemcpyHostToDevice);
+    
     // Algorithmic parameters and data pointers used in GPU program
     Params params;
     params.min_point = min_point;
@@ -321,7 +342,10 @@ int main() {
     params.height = height;
     params.depth = depth;
     params.output = d_output;
-
+    params.start_points = d_start_points;
+    params.end_points = d_end_points;
+    params.aabbBuffer = d_aabbBuffer;
+    
     Params *d_param;
     CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
     CUDA_CHECK(
@@ -353,7 +377,6 @@ int main() {
     CUDA_CHECK(cudaFree(d_param));
     delete rtx_dataholder;
     
-    loop through aabb's in grid and print their values
 
     
     return 0;

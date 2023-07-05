@@ -92,8 +92,23 @@ extern "C" __global__ void __raygen__ray_sample() {
   unsigned int SBToffset = 0;
   unsigned int SBTstride = 0;
   unsigned int missSBTIndex = 0;
+
+  // Save exit points of each AABB in optixPayload (setoptixpayload)
+  // relaunch optix trace replace ray origins with exit points from optix payload
+  // may need another payload to know when to stop launching rays
+  
+  // tmax should be 
   optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
              visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex);
+  
+  while() {
+    // optixgetpayload should retrive exit points from previous rays
+    // for each exit point
+    // payload1 saves x, payload2 saves y, payload3 saves z
+
+    optixTrace(params.handle, , ray_direction, tmin, tmax, ray_time,
+             visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex)
+  }
 }
 
 // extern "C" __global__ void __anyhit__ray_sample() {}
@@ -104,6 +119,30 @@ extern "C" __global__ void __closesthit__ray_sample() {
   // For every closest hit, we update a scalar value in Global memory
   unsigned int idx = launch_index.x + launch_index.y * params.width;
   float *output = params.output;
+
+  // get t max value of ray for a hit
+  float t_current = optixGetRayTmax();
+  float3 ray_direction = optixGetWorldRayDirection();
+  float3 ray_origin = optixGetWorldRayOrigin();
+  float3 hit_point = ray_origin + t_current * ray_direction;
+
+  // from the hitpoint march through till the exit point of the current AABB
+  // store the sampled points in a buffer in Params
+  // determine start point and end point
+  // compute the end point given bounding box coordinates
+  
+  // compute the start and end points
+  // store them in a buffer in Params
+  // get the optixAabb that we currenty intersected with
+  // use the bounding box coordinates in order to compute the end point
+  // store the start and end points of this ray in this AABB in param buffers
+  uint primitiveIndex = optixGetPrimitiveIndex();
+  OptixAabb aabb = Params.aabb[primitiveIndex];
+  float3 min_point = make_float3(aabb.minX, aabb.minY, aabb.minZ);
+  float3 max_point = make_float3(aabb.maxX, aabb.maxY, aabb.maxZ);
+  
+
+  // this should store sampled points in a buffer in Params
   atomicAdd(output + idx,
             0.2f); // can be the scalar value associated with a triangle.
 }
