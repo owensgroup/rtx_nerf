@@ -18,8 +18,9 @@ struct float5 {
 struct Params {
     // Handle to the initialized acceleration structure
     OptixTraversableHandle handle;
-    
-    OptixAabb* grid;
+    OptixAabb* grid; // pointer to AABBs in acceleration structure
+
+    // near and far planes
     float t_near;
     float t_far;
     
@@ -30,6 +31,9 @@ struct Params {
     float5* input_points;
 
     // start points is [W, H, num_boxes_in_grid]
+    // W is width of the image
+    // H is height of the image
+
     // same with end points
     float3* start_points;
     float3* end_points;

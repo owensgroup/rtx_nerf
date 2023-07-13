@@ -32,8 +32,9 @@
 #include <limits>
 #include <cstring>
 #include <optix.h>
-
+#include <iostream>
 #include "common.h"
+#include "volume_reader.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 
@@ -275,67 +276,71 @@ void RTXDataHolder::buildSBT() {
 
 // initializes a grid of AABBs and builds an acceleration structure
 // handle to structure is stored in gas_handle
-void
-RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
+// void
+// RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
   
-  int numPrimitives = grid.size();
-  OptixAabb* d_aabbBuffer;
-  cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
-  cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
-      cudaMemcpyHostToDevice);
-  OptixAccelBuildOptions accelOptions = {};
-  OptixBuildInput buildInputs[2];
+//   int numPrimitives = grid.size();
+//   OptixAabb* d_aabbBuffer;
+//   cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
+//   cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
+//       cudaMemcpyHostToDevice);
+//   OptixAccelBuildOptions accelOptions = {};
+//   OptixBuildInput buildInputs[2];
 
-  CUdeviceptr tempBuffer, outputBuffer;
-  size_t tempBufferSizeInBytes, outputBufferSizeInBytes;
+//   CUdeviceptr tempBuffer, outputBuffer;
+//   size_t tempBufferSizeInBytes, outputBufferSizeInBytes;
 
-  memset((void*)accelOptions, 0, sizeof(OptixAccelBuildOptions));
-  accelOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-  accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-  accelOptions.motionOptions.numKeys = 0;
+//   memset((void*)accelOptions, 0, sizeof(OptixAccelBuildOptions));
+//   accelOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+//   accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+//   accelOptions.motionOptions.numKeys = 0;
 
 
-  OptixBuildInputCustomPrimitiveArray& buildInput = 
-      buildInputs[0].customPrimitiveArray;
-  buildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-  buildInput.aabbBuffers = d_aabbBuffer;
-  buildInput.numPrimitives = numPrimitives;
-  OptixAccelBufferSizes bufferSizes = {};
-  optixAccelComputeMemoryUsage(optixContext, &accelOptions,
-      buildInputs, 2, &bufferSizes);
+//   OptixBuildInputCustomPrimitiveArray& buildInput = 
+//       buildInputs[0].customPrimitiveArray;
+//   buildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+//   buildInput.aabbBuffers = d_aabbBuffer;
+//   buildInput.numPrimitives = numPrimitives;
+//   OptixAccelBufferSizes bufferSizes = {};
+//   optixAccelComputeMemoryUsage(optixContext, &accelOptions,
+//       buildInputs, 2, &bufferSizes);
 
-  void* d_output;
-  void* d_temp;
+//   void* d_output;
+//   void* d_temp;
 
-  cudaMalloc(&d_output, bufferSizes.outputSizeInBytes);
-  cudaMalloc(&d_temp, bufferSizes.tempSizeInBytes);
+//   cudaMalloc(&d_output, bufferSizes.outputSizeInBytes);
+//   cudaMalloc(&d_temp, bufferSizes.tempSizeInBytes);
 
-  OptixResult results = optixAccelBuild(optixContext, cuStream,
-      &accelOptions, buildInputs, 2, d_temp,
-      bufferSizes.tempSizeInBytes, d_output,
-      bufferSizes.outputSizeInBytes, &gas_handle, nullptr, 0);  
-}
+//   OptixResult results = optixAccelBuild(optixContext, cuStream,
+//       &accelOptions, buildInputs, 2, d_temp,
+//       bufferSizes.tempSizeInBytes, d_output,
+//       bufferSizes.outputSizeInBytes, &gas_handle, nullptr, 0);  
+// }
 
 
 OptixAabb
 RTXDataHolder::buildAccelerationStructure(const std::string obj_filename,
                                           std::vector<float3> &vertices,
                                           std::vector<uint3> &triangles) {
+  std::cout << "Reading Volume Mesh" << std::endl;                                         
   OptixAabb aabb;
 
   aabb = read_volume_mesh(obj_filename, vertices, triangles);
+  std::cout << "Allocating Mesh Vertices on GPU" << std::endl;
   float3 *d_vertices;
   const size_t vertices_size = sizeof(float3) * vertices.size();
   CUDA_CHECK(cudaMalloc(&d_vertices, vertices_size));
   CUDA_CHECK(cudaMemcpy(d_vertices, vertices.data(), vertices_size,
                         cudaMemcpyHostToDevice));
 
+  std::cout << "Allocating Mesh Triangles on GPU" << std::endl;
   const size_t tri_size = sizeof(uint3) * triangles.size();
   void *d_triangles;
   CUDA_CHECK(cudaMalloc(&d_triangles, tri_size));
   CUDA_CHECK(cudaMemcpy(d_triangles, triangles.data(), tri_size,
                         cudaMemcpyHostToDevice));
 
+  std::cout << "Building Optix GAS" << std::endl;
   const unsigned int triangle_input_flags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
   OptixBuildInput triangle_input = {};
   triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
@@ -355,7 +360,7 @@ RTXDataHolder::buildAccelerationStructure(const std::string obj_filename,
   OptixAccelBuildOptions accel_options = {};
   accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
   accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
-
+  std::cout << "Calculating GAS Memory Usage" << std::endl;
   OptixAccelBufferSizes gas_buffer_sizes;
   OPTIX_CHECK(optixAccelComputeMemoryUsage(optix_context, &accel_options,
                                            &triangle_input,
@@ -435,7 +440,8 @@ OptixAabb RTXDataHolder::read_volume_mesh(const std::string &vol_filename,
   OptixAabb aabb;
   aabb.minX = aabb.minY = aabb.minZ = std::numeric_limits<float>::max();
   aabb.maxX = aabb.maxY = aabb.maxZ = -std::numeric_limits<float>::max();
-  read_volume_mesh(vol_filename, vertices, triangles);
+  std::cout << "Reading Volume File Name" << std::endl;
+  read_volume(vertices, triangles, vol_filename);
   for (int i = 0; i < vertices.size(); i++) {
     float3 &vertex = vertices[i];
     // Update aabb

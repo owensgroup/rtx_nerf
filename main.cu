@@ -184,8 +184,6 @@ __global__ void print_batch(float* batch, int batch_size, int image_size) {
 // Bounding box coordinates are specified in normalized coordinates from -1 to 1
 std::vector<OptixAabb> make_grid(int resolution) {
     std::vector<OptixAabb> grid;
-
-    
     float box_length = 2.0f/ (float)resolution;
     for(int x = 0; x < resolution; x++) {
         for(int y = 0; y < resolution; y++) {
@@ -198,7 +196,6 @@ std::vector<OptixAabb> make_grid(int resolution) {
                 aabb.minZ = -1.0f + z * box_length;
                 aabb.maxZ = -1.0f + z * box_length + box_length;
                 grid.push_back(aabb);
-
             }
         }
     }
@@ -211,13 +208,10 @@ std::vector<OptixAabb> make_grid(int resolution) {
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
-uint32_t width = 8u;
-uint32_t height = 8u;
-uint32_t depth = 8u;
-uint32_t initial_grid_resolution = 8u;
+uint32_t width = 800u;
+uint32_t height = 600u;
+uint32_t depth = 1;
 
-uint32_t image_width = 800u;
-uint32_t image_height = 800u;
 
 
 int main() {
@@ -280,12 +274,12 @@ int main() {
     //         current_batch++;
     //     }
     // }
-    std::vector<OptixAabb> grid = make_grid(initial_grid_resolution);
-    float transform_matrix[] = {
-        -0.9999021887779236,0.004192245192825794,-0.013345719315111637,-0.05379832163453102,
-        -0.013988681137561798, -0.2996590733528137, 0.95394366979599, 3.845470428466797,
-        -4.656612873077393e-10, 0.9540371894836426, 0.29968830943107605, 1.2080823183059692,
-        0.0, 0.0, 0.0, 1.0};
+    // std::vector<OptixAabb> grid = make_grid(initial_grid_resolution);
+    // float transform_matrix[] = {
+    //     -0.9999021887779236,0.004192245192825794,-0.013345719315111637,-0.05379832163453102,
+    //     -0.013988681137561798, -0.2996590733528137, 0.95394366979599, 3.845470428466797,
+    //     -4.656612873077393e-10, 0.9540371894836426, 0.29968830943107605, 1.2080823183059692,
+    //     0.0, 0.0, 0.0, 1.0};
     
     std::string ptx_filename = BUILD_DIR "/ptx/optixPrograms.ptx";
     cudaStream_t stream;
@@ -302,38 +296,42 @@ int main() {
     rtx_dataholder->linkPipeline(false);
     std::cout << "Building Shader Binding Table (SBT) \n";
     rtx_dataholder->buildSBT();
-
-
-    std::cout << "Building Acceleration Structure \n";
-    rtx_dataholder->initAccelerationStructure(grid);
     
-
+    // /home/tsaluru/optix/rtx_compute_samples/build/resources/cow.obj
+    std::string obj_file = "wavelet.txt";
+    std::cout << "Building Acceleration Structure \n";
+    std::vector<float3> vertices;
+    std::vector<uint3> triangles;
+    OptixAabb aabb_box = rtx_dataholder->buildAccelerationStructure(obj_file, vertices, triangles);
+    std::cout << "Done Building Acceleration Structure \n";
+    // Allocating GPU buffers for Params
     // calculate delta
     float3 delta = make_float3((aabb_box.maxX - aabb_box.minX) / width,
                                 (aabb_box.maxY - aabb_box.minY) / height,
                                 (aabb_box.maxZ - aabb_box.minZ) / depth);
     float3 min_point = make_float3(aabb_box.minX, aabb_box.minY, aabb_box.minZ);
     float3 max_point = make_float3(aabb_box.maxX, aabb_box.maxY, aabb_box.maxZ);
-
+   
     float *d_output;
     CUDA_CHECK(cudaMalloc((void **)&d_output, width * height * sizeof(float)));
     CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
 
-    float3 *d_start_points;
-    float3 *d_end_points;
-    CUDA_CHECK(cudaMalloc((void **)&d_start_points, image_width * image_height * width * depth * height * sizeof(float3)));
-    CUDA_CHECK(cudaMalloc((void **)&d_end_points, image_width * image_height * width * depth * height * sizeof(float3)));
-    CUDA_CHECK(cudaMemset(d_start_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
-    CUDA_CHECK(cudaMemset(d_end_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
+    // float3 *d_start_points;
+    // float3 *d_end_points;
+    // CUDA_CHECK(cudaMalloc((void **)&d_start_points, image_width * image_height * width * depth * height * sizeof(float3)));
+    // CUDA_CHECK(cudaMalloc((void **)&d_end_points, image_width * image_height * width * depth * height * sizeof(float3)));
+    // CUDA_CHECK(cudaMemset(d_start_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
+    // CUDA_CHECK(cudaMemset(d_end_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
 
-    int numPrimitives = grid.size();
-    OptixAabb* d_aabbBuffer;
-    cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
-    cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
-      cudaMemcpyHostToDevice);
+    // int numPrimitives = grid.size();
+    // OptixAabb* d_aabbBuffer;
+    // cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
+    // cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
+    //   cudaMemcpyHostToDevice);
     
     // Algorithmic parameters and data pointers used in GPU program
     Params params;
+    // params.transform_matrix = transform_matrix;
     params.min_point = min_point;
     params.max_point = max_point;
     params.delta = delta;
@@ -342,10 +340,9 @@ int main() {
     params.height = height;
     params.depth = depth;
     params.output = d_output;
-    params.start_points = d_start_points;
-    params.end_points = d_end_points;
-    params.aabbBuffer = d_aabbBuffer;
-    
+    // params.start_points = d_start_points;
+    // params.end_points = d_end_points;
+
     Params *d_param;
     CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
     CUDA_CHECK(
@@ -367,6 +364,8 @@ int main() {
                             sizeof(Params), &sbt_ray_march, width, height,
                             depth));
     CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    std::cout << "Writing output to file \n";
     float *h_output = new float[width * height];
     CUDA_CHECK(cudaMemcpy(h_output, d_output, width * height * sizeof(float),
                            cudaMemcpyDeviceToHost));
