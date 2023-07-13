@@ -354,7 +354,11 @@ int main() {
                             reinterpret_cast<CUdeviceptr>(d_param),
                             sizeof(Params), &sbt_ray_march, width, height, 1));
     CUDA_CHECK(cudaStreamSynchronize(stream));
-
+    std::cout << "Writing output to file \n";
+    float *h_output1 = new float[width * height];
+    CUDA_CHECK(cudaMemcpy(h_output1, d_output, width * height * sizeof(float),
+                           cudaMemcpyDeviceToHost));
+    stbi_write_png("test1.png", width, height, 1, h_output1, width);
     CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
     const OptixShaderBindingTable &sbt_ray_sample =
         rtx_dataholder->sbt_ray_sample;
@@ -366,11 +370,11 @@ int main() {
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     std::cout << "Writing output to file \n";
-    float *h_output = new float[width * height];
-    CUDA_CHECK(cudaMemcpy(h_output, d_output, width * height * sizeof(float),
+    float *h_output2 = new float[width * height];
+    CUDA_CHECK(cudaMemcpy(h_output2, d_output, width * height * sizeof(float),
                            cudaMemcpyDeviceToHost));
                         
-    stbi_write_png("test.png", width, height, 1, h_output, width);
+    stbi_write_png("test2.png", width, height, 1, h_output2, width);
     std::cout << "Cleaning up ... \n";
     CUDA_CHECK(cudaFree(d_output));
     CUDA_CHECK(cudaFree(d_param));
