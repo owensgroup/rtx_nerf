@@ -13,9 +13,11 @@ In order to setup the repository, first download Optix. Then from the root run C
 ```
 mkdir build && cd build
 cmake ../ -DOPTIX_HOME=[/path/to/optix/]
+make
 ```
 
 In order to build in debug mode
 ```
 cmake ../ -DCMAKE_BUILD_TYPE=Debug -DOPTIX_HOME=[/path/to/optix/]
+make
 ```
