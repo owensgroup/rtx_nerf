@@ -26,8 +26,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+ //include printf
+#include <stdio.h>
+#include <optix.h>
+
 #include "params.h"
 #include <optix.h>
+
 
 extern "C" static __constant__ Params params;
 
@@ -58,6 +63,7 @@ extern "C" __global__ void __raygen__ray_march() {
   unsigned int SBTstride = 0;
   unsigned int missSBTIndex = 0;
   unsigned int payload = 0;
+  printf("Calling Optix Trace: %d, %d\n", launch_index.x, launch_index.y);
   optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
              visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
              payload);
