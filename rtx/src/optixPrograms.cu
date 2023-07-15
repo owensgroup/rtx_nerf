@@ -46,7 +46,7 @@ extern "C" __global__ void __raygen__ray_march() {
   // TODO: Apply transform matrix to ray origin
   float xo = min_point.x + delta.x * launch_index.x + (delta.x / 2);
   float yo = min_point.y + delta.y * launch_index.y + (delta.y / 2);
-  float zo = -1 * min_point.z; // rays coming from the back plane to front
+  float zo = min_point.z; 
   float3 ray_origin = make_float3(xo, yo, zo);
 
   float3 ray_direction = make_float3(0.0, 0.0, 1.0);
