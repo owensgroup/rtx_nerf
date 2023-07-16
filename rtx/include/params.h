@@ -19,10 +19,7 @@ struct Params {
     // Handle to the initialized acceleration structure
     OptixTraversableHandle handle;
     OptixAabb* grid; // pointer to AABBs in acceleration structure
-
-    // near and far planes
-    float t_near;
-    float t_far;
+    
     
     float* transform_matrix; // 4x4 matrix
     // store color (R,G,B) and density for each point 

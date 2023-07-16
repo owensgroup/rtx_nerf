@@ -297,12 +297,14 @@ int main() {
     std::cout << "Building Shader Binding Table (SBT) \n";
     rtx_dataholder->buildSBT();
     
-    // /home/tsaluru/optix/rtx_compute_samples/build/resources/cow.obj
-    std::string obj_file = "wavelet.txt";
-    std::cout << "Building Acceleration Structure \n";
-    std::vector<float3> vertices;
-    std::vector<uint3> triangles;
-    OptixAabb aabb_box = rtx_dataholder->buildAccelerationStructure(obj_file, vertices, triangles);
+    
+    // std::string obj_file = "wavelet.txt";
+    // std::cout << "Building Acceleration Structure \n";
+    // std::vector<float3> vertices;
+    // std::vector<uint3> triangles;
+    // OptixAabb aabb_box = rtx_dataholder->buildAccelerationStructure(obj_file, vertices, triangles);
+    std::vector<OptixAabb> grid = make_grid(16);
+    rtx_dataholder->initAccelerationStructure(grid);
     std::cout << "Done Building Acceleration Structure \n";
     // Allocating GPU buffers for Params
     // calculate delta
@@ -358,7 +360,7 @@ int main() {
     float *h_output1 = new float[width * height];
     CUDA_CHECK(cudaMemcpy(h_output1, d_output, width * height * sizeof(float),
                            cudaMemcpyDeviceToHost));
-    stbi_write_png("test1.png", width, height, 1, h_output1, width);
+    stbi_write_png("ray_march.png", width, height, 1, h_output1, width);
     CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
     const OptixShaderBindingTable &sbt_ray_sample =
         rtx_dataholder->sbt_ray_sample;
@@ -374,7 +376,7 @@ int main() {
     CUDA_CHECK(cudaMemcpy(h_output2, d_output, width * height * sizeof(float),
                            cudaMemcpyDeviceToHost));
                         
-    stbi_write_png("test2.png", width, height, 1, h_output2, width);
+    stbi_write_png("ray_sample.png", width, height, 1, h_output2, width);
     std::cout << "Cleaning up ... \n";
     CUDA_CHECK(cudaFree(d_output));
     CUDA_CHECK(cudaFree(d_param));

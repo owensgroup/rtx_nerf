@@ -274,48 +274,48 @@ void RTXDataHolder::buildSBT() {
   }
 }
 
-// initializes a grid of AABBs and builds an acceleration structure
-// handle to structure is stored in gas_handle
-// void
-// RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
+initializes a grid of AABBs and builds an acceleration structure
+handle to structure is stored in gas_handle
+void
+RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid,
+                                         OptixAabb &d_aabbBuffer) {
   
-//   int numPrimitives = grid.size();
-//   OptixAabb* d_aabbBuffer;
-//   cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
-//   cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
-//       cudaMemcpyHostToDevice);
-//   OptixAccelBuildOptions accelOptions = {};
-//   OptixBuildInput buildInputs[2];
+  int numPrimitives = grid.size();
+  cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
+  cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
+      cudaMemcpyHostToDevice);
+  OptixAccelBuildOptions accelOptions = {};
+  OptixBuildInput buildInputs[2];
 
-//   CUdeviceptr tempBuffer, outputBuffer;
-//   size_t tempBufferSizeInBytes, outputBufferSizeInBytes;
+  CUdeviceptr tempBuffer, outputBuffer;
+  size_t tempBufferSizeInBytes, outputBufferSizeInBytes;
 
-//   memset((void*)accelOptions, 0, sizeof(OptixAccelBuildOptions));
-//   accelOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-//   accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-//   accelOptions.motionOptions.numKeys = 0;
+  memset((void*)accelOptions, 0, sizeof(OptixAccelBuildOptions));
+  accelOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+  accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+  accelOptions.motionOptions.numKeys = 0;
 
 
-//   OptixBuildInputCustomPrimitiveArray& buildInput = 
-//       buildInputs[0].customPrimitiveArray;
-//   buildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-//   buildInput.aabbBuffers = d_aabbBuffer;
-//   buildInput.numPrimitives = numPrimitives;
-//   OptixAccelBufferSizes bufferSizes = {};
-//   optixAccelComputeMemoryUsage(optixContext, &accelOptions,
-//       buildInputs, 2, &bufferSizes);
+  OptixBuildInputCustomPrimitiveArray& buildInput = 
+      buildInputs[0].customPrimitiveArray;
+  buildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+  buildInput.aabbBuffers = d_aabbBuffer;
+  buildInput.numPrimitives = numPrimitives;
+  OptixAccelBufferSizes bufferSizes = {};
+  optixAccelComputeMemoryUsage(optixContext, &accelOptions,
+      buildInputs, 2, &bufferSizes);
 
-//   void* d_output;
-//   void* d_temp;
+  void* d_output;
+  void* d_temp;
 
-//   cudaMalloc(&d_output, bufferSizes.outputSizeInBytes);
-//   cudaMalloc(&d_temp, bufferSizes.tempSizeInBytes);
+  cudaMalloc(&d_output, bufferSizes.outputSizeInBytes);
+  cudaMalloc(&d_temp, bufferSizes.tempSizeInBytes);
 
-//   OptixResult results = optixAccelBuild(optixContext, cuStream,
-//       &accelOptions, buildInputs, 2, d_temp,
-//       bufferSizes.tempSizeInBytes, d_output,
-//       bufferSizes.outputSizeInBytes, &gas_handle, nullptr, 0);  
-// }
+  OptixResult results = optixAccelBuild(optixContext, cuStream,
+      &accelOptions, buildInputs, 2, d_temp,
+      bufferSizes.tempSizeInBytes, d_output,
+      bufferSizes.outputSizeInBytes, &gas_handle, nullptr, 0);  
+}
 
 
 OptixAabb
