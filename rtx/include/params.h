@@ -32,8 +32,9 @@ struct Params {
     // H is height of the image
 
     // same with end points
-    float3* start_points;
-    float3* end_points;
+    float3* start_points; // store the start points of each ray
+    float3* end_points; // store the end points of each ray
+    float* intersection_per_ray; // store the number of intersections with AABBs per ray (<= num_primitives per ray)
     float3 delta;
     float3 min_point;
     float3 max_point;

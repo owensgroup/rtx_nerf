@@ -274,36 +274,37 @@ void RTXDataHolder::buildSBT() {
   }
 }
 
-initializes a grid of AABBs and builds an acceleration structure
-handle to structure is stored in gas_handle
+// initializes a grid of AABBs and builds an acceleration structure
+// handle to structure is stored in gas_handle
 void
 RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid,
-                                         OptixAabb &d_aabbBuffer) {
+                                         OptixAabb *d_aabbBuffer) {
   
+  std::cout << "Allocating Memory for AABBs" << std::endl;
   int numPrimitives = grid.size();
-  cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
+  cudaMalloc((void **)&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
   cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
       cudaMemcpyHostToDevice);
+  
+  std::cout << "Specifying AS options for build" << std::endl;
   OptixAccelBuildOptions accelOptions = {};
-  OptixBuildInput buildInputs[2];
+  OptixBuildInput buildInput = {};
 
   CUdeviceptr tempBuffer, outputBuffer;
   size_t tempBufferSizeInBytes, outputBufferSizeInBytes;
 
-  memset((void*)accelOptions, 0, sizeof(OptixAccelBuildOptions));
   accelOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
   accelOptions.motionOptions.numKeys = 0;
 
 
-  OptixBuildInputCustomPrimitiveArray& buildInput = 
-      buildInputs[0].customPrimitiveArray;
-  buildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-  buildInput.aabbBuffers = d_aabbBuffer;
-  buildInput.numPrimitives = numPrimitives;
+  OptixBuildInputCustomPrimitiveArray& buildInputCustom = 
+      buildInput.customPrimitiveArray;
+  buildInputCustom.aabbBuffers = reinterpret_cast<CUdeviceptr *>(d_aabbBuffer);
+  buildInputCustom.numPrimitives = numPrimitives;
   OptixAccelBufferSizes bufferSizes = {};
-  optixAccelComputeMemoryUsage(optixContext, &accelOptions,
-      buildInputs, 2, &bufferSizes);
+  optixAccelComputeMemoryUsage(optix_context, &accelOptions,
+      &buildInput, 1, &bufferSizes);
 
   void* d_output;
   void* d_temp;
@@ -311,9 +312,9 @@ RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid,
   cudaMalloc(&d_output, bufferSizes.outputSizeInBytes);
   cudaMalloc(&d_temp, bufferSizes.tempSizeInBytes);
 
-  OptixResult results = optixAccelBuild(optixContext, cuStream,
-      &accelOptions, buildInputs, 2, d_temp,
-      bufferSizes.tempSizeInBytes, d_output,
+  OptixResult results = optixAccelBuild(optix_context, stream,
+      &accelOptions, &buildInput, 2, reinterpret_cast<CUdeviceptr>(d_temp),
+      bufferSizes.tempSizeInBytes, reinterpret_cast<CUdeviceptr>(d_output),
       bufferSizes.outputSizeInBytes, &gas_handle, nullptr, 0);  
 }
 

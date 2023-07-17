@@ -274,7 +274,7 @@ int main() {
     //         current_batch++;
     //     }
     // }
-    // std::vector<OptixAabb> grid = make_grid(initial_grid_resolution);
+    // a
     // float transform_matrix[] = {
     //     -0.9999021887779236,0.004192245192825794,-0.013345719315111637,-0.05379832163453102,
     //     -0.013988681137561798, -0.2996590733528137, 0.95394366979599, 3.845470428466797,
@@ -303,47 +303,56 @@ int main() {
     // std::vector<float3> vertices;
     // std::vector<uint3> triangles;
     // OptixAabb aabb_box = rtx_dataholder->buildAccelerationStructure(obj_file, vertices, triangles);
-    std::vector<OptixAabb> grid = make_grid(16);
-    rtx_dataholder->initAccelerationStructure(grid);
+    
+    // float3 delta = make_float3((aabb_box.maxX - aabb_box.minX) / width,
+    //                             (aabb_box.maxY - aabb_box.minY) / height,
+    //                             (aabb_box.maxZ - aabb_box.minZ) / depth);
+    // float3 min_point = make_float3(aabb_box.minX, aabb_box.minY, aabb_box.minZ);
+    // float3 max_point = make_float3(aabb_box.maxX, aabb_box.maxY, aabb_box.maxZ);
+    int grid_resolution = 8;
+    std::cout << "Building Acceleration Structure \n";
+    std::vector<OptixAabb> grid = make_grid(grid_resolution);
+    int num_primitives = grid.size();
+    OptixAabb* d_aabbBuffer;
+    rtx_dataholder->initAccelerationStructure(grid, d_aabbBuffer);
     std::cout << "Done Building Acceleration Structure \n";
-    // Allocating GPU buffers for Params
-    // calculate delta
-    float3 delta = make_float3((aabb_box.maxX - aabb_box.minX) / width,
-                                (aabb_box.maxY - aabb_box.minY) / height,
-                                (aabb_box.maxZ - aabb_box.minZ) / depth);
-    float3 min_point = make_float3(aabb_box.minX, aabb_box.minY, aabb_box.minZ);
-    float3 max_point = make_float3(aabb_box.maxX, aabb_box.maxY, aabb_box.maxZ);
-   
+
+
+    std::cout << "Allocating Buffers for Params \n";
+    // allocate and memset output image buffer
     float *d_output;
     CUDA_CHECK(cudaMalloc((void **)&d_output, width * height * sizeof(float)));
     CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
 
-    // float3 *d_start_points;
-    // float3 *d_end_points;
-    // CUDA_CHECK(cudaMalloc((void **)&d_start_points, image_width * image_height * width * depth * height * sizeof(float3)));
-    // CUDA_CHECK(cudaMalloc((void **)&d_end_points, image_width * image_height * width * depth * height * sizeof(float3)));
-    // CUDA_CHECK(cudaMemset(d_start_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
-    // CUDA_CHECK(cudaMemset(d_end_points, -1, image_width * image_height * width * depth * height * sizeof(float3)));
+    // start and end points are equal to # of AABBs in AS per ray
+    float3 *d_start_points;
+    float3 *d_end_points;
+    CUDA_CHECK(cudaMalloc(
+        (void **)&d_start_points, width * height * num_primitives * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc(
+        (void **)&d_end_points, width * height * num_primitives * sizeof(float3)));
+    CUDA_CHECK(cudaMemset(d_start_points, -1, width * height * num_primitives * sizeof(float3)));
+    CUDA_CHECK(cudaMemset(d_end_points, -1, width * height * num_primitives * sizeof(float3)));
 
-    // int numPrimitives = grid.size();
-    // OptixAabb* d_aabbBuffer;
-    // cudaMalloc(&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
-    // cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
-    //   cudaMemcpyHostToDevice);
+
+
+    
+    
     
     // Algorithmic parameters and data pointers used in GPU program
     Params params;
     // params.transform_matrix = transform_matrix;
-    params.min_point = min_point;
-    params.max_point = max_point;
-    params.delta = delta;
+    params.min_point = make_float3(-1, -1, -1);
+    params.max_point = make_float3(1, 1, 1);
+    float d =  2.0f / grid_resolution;
+    params.delta = make_float3(d, d, d);
     params.handle = rtx_dataholder->gas_handle;
     params.width = width;
     params.height = height;
     params.depth = depth;
     params.output = d_output;
-    // params.start_points = d_start_points;
-    // params.end_points = d_end_points;
+    params.start_points = d_start_points;
+    params.end_points = d_end_points;
 
     Params *d_param;
     CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
@@ -361,28 +370,27 @@ int main() {
     CUDA_CHECK(cudaMemcpy(h_output1, d_output, width * height * sizeof(float),
                            cudaMemcpyDeviceToHost));
     stbi_write_png("ray_march.png", width, height, 1, h_output1, width);
-    CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
-    const OptixShaderBindingTable &sbt_ray_sample =
-        rtx_dataholder->sbt_ray_sample;
-    std::cout << "Launching Ray Tracer in Ray Sample Mode \n";
-    OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_sample, stream,
-                            reinterpret_cast<CUdeviceptr>(d_param),
-                            sizeof(Params), &sbt_ray_march, width, height,
-                            depth));
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    std::cout << "Writing output to file \n";
-    float *h_output2 = new float[width * height];
-    CUDA_CHECK(cudaMemcpy(h_output2, d_output, width * height * sizeof(float),
-                           cudaMemcpyDeviceToHost));
+    // CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
+    // const OptixShaderBindingTable &sbt_ray_sample =
+    //     rtx_dataholder->sbt_ray_sample;
+    // std::cout << "Launching Ray Tracer in Ray Sample Mode \n";
+    // OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_sample, stream,
+    //                         reinterpret_cast<CUdeviceptr>(d_param),
+    //                         sizeof(Params), &sbt_ray_march, width, height,
+    //                         depth));
+    // CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    // std::cout << "Writing output to file \n";
+    // float *h_output2 = new float[width * height];
+    // CUDA_CHECK(cudaMemcpy(h_output2, d_output, width * height * sizeof(float),
+    //                        cudaMemcpyDeviceToHost));
                         
-    stbi_write_png("ray_sample.png", width, height, 1, h_output2, width);
-    std::cout << "Cleaning up ... \n";
+    // stbi_write_png("ray_sample.png", width, height, 1, h_output2, width);
+    // std::cout << "Cleaning up ... \n";
     CUDA_CHECK(cudaFree(d_output));
     CUDA_CHECK(cudaFree(d_param));
     delete rtx_dataholder;
-    
-
-    
     return 0;
 }
