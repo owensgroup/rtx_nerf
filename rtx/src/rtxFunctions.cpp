@@ -38,6 +38,16 @@
 
 #define TINYOBJLOADER_IMPLEMENTATION
 
+#define OPTIX_ERROR_CHECK(result) { \
+    if (result != OPTIX_SUCCESS) { \
+        std::string error_name = std::string(optixGetErrorName(result)); \
+        std::string error_string = std::string(optixGetErrorString(result)); \
+        std::string file = std::string(__FILE__); \
+        std::string line = std::to_string(__LINE__); \
+        throw std::runtime_error(error_name + ": " + error_string + " at " + file + ":" + line); \
+    } \
+} \
+
 void RTXDataHolder::initContext() {
   CUDA_CHECK(cudaFree(0)); // Initializes CUDA context
   OPTIX_CHECK(optixInit());
@@ -277,44 +287,56 @@ void RTXDataHolder::buildSBT() {
 // initializes a grid of AABBs and builds an acceleration structure
 // handle to structure is stored in gas_handle
 void
-RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid,
-                                         OptixAabb *d_aabbBuffer) {
+RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
   
-  std::cout << "Allocating Memory for AABBs" << std::endl;
+  std::cout << "Allocating Device Memory for AABBs" << std::endl;
   int numPrimitives = grid.size();
-  cudaMalloc((void **)&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
-  cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
-      cudaMemcpyHostToDevice);
+  CUdeviceptr d_aabbBuffer;
+  CUDA_CHECK(cudaMalloc((void **)&d_aabbBuffer, numPrimitives * sizeof(OptixAabb)));
+  CUDA_CHECK(cudaMemcpy((void *)d_aabbBuffer, grid.data(),
+                            numPrimitives * sizeof(OptixAabb), cudaMemcpyHostToDevice));
+  // cudaMalloc((void **)&d_aabbBuffer, sizeof(OptixAabb) * numPrimitives);
+  // cudaMemcpy(d_aabbBuffer, grid.data(), sizeof(OptixAabb) * numPrimitives,
+  //     cudaMemcpyHostToDevice);
   
-  std::cout << "Specifying AS options for build" << std::endl;
-  OptixAccelBuildOptions accelOptions = {};
-  OptixBuildInput buildInput = {};
+
+  const unsigned int inputFlags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+  std::cout << "Building Acceleration Structure" << std::endl;
+  OptixBuildInput customInput = {};
+  customInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+  customInput.customPrimitiveArray.aabbBuffers = &d_aabbBuffer;
+  customInput.customPrimitiveArray.numPrimitives = numPrimitives;
+  customInput.customPrimitiveArray.strideInBytes = 0;
+  customInput.customPrimitiveArray.flags = inputFlags;
+  customInput.customPrimitiveArray.numSbtRecords = 1;
+  customInput.customPrimitiveArray.sbtIndexOffsetBuffer = NULL;
+  customInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
+  customInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
+  customInput.customPrimitiveArray.primitiveIndexOffset = 0;
+
+
+
 
   CUdeviceptr tempBuffer, outputBuffer;
   size_t tempBufferSizeInBytes, outputBufferSizeInBytes;
-
+  OptixAccelBuildOptions accelOptions = {};
   accelOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
   accelOptions.motionOptions.numKeys = 0;
 
+  std::cout << "Computing AS Buffer Mem Usage" << std::endl;
+  OptixAccelBufferSizes bufferSizes;
+  OPTIX_ERROR_CHECK(optixAccelComputeMemoryUsage(optix_context, &accelOptions,
+      &customInput, 1, &bufferSizes));
 
-  OptixBuildInputCustomPrimitiveArray& buildInputCustom = 
-      buildInput.customPrimitiveArray;
-  buildInputCustom.aabbBuffers = reinterpret_cast<CUdeviceptr *>(d_aabbBuffer);
-  buildInputCustom.numPrimitives = numPrimitives;
-  OptixAccelBufferSizes bufferSizes = {};
-  optixAccelComputeMemoryUsage(optix_context, &accelOptions,
-      &buildInput, 1, &bufferSizes);
+  std::cout << "Allocating AS Buffers" << std::endl;
+  cudaMalloc((void**)&outputBuffer, bufferSizes.outputSizeInBytes);
+  cudaMalloc((void**)&tempBuffer, bufferSizes.tempSizeInBytes);
 
-  void* d_output;
-  void* d_temp;
-
-  cudaMalloc(&d_output, bufferSizes.outputSizeInBytes);
-  cudaMalloc(&d_temp, bufferSizes.tempSizeInBytes);
-
+  std::cout << "Call Optix Build" << std::endl;
   OptixResult results = optixAccelBuild(optix_context, stream,
-      &accelOptions, &buildInput, 2, reinterpret_cast<CUdeviceptr>(d_temp),
-      bufferSizes.tempSizeInBytes, reinterpret_cast<CUdeviceptr>(d_output),
+      &accelOptions, &customInput, 1, tempBuffer,
+      bufferSizes.tempSizeInBytes, outputBuffer,
       bufferSizes.outputSizeInBytes, &gas_handle, nullptr, 0);  
 }
 

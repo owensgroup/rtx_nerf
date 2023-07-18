@@ -313,8 +313,8 @@ int main() {
     std::cout << "Building Acceleration Structure \n";
     std::vector<OptixAabb> grid = make_grid(grid_resolution);
     int num_primitives = grid.size();
-    OptixAabb* d_aabbBuffer;
-    rtx_dataholder->initAccelerationStructure(grid, d_aabbBuffer);
+    
+    rtx_dataholder->initAccelerationStructure(grid);
     std::cout << "Done Building Acceleration Structure \n";
 
 
