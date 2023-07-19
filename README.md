@@ -4,7 +4,7 @@ An implementation of NeRF acceleration using RTX cores to compute ray-grid inter
 # Setup
 ## Requirements
 You will need:
-- a Nvidia GPU with compute capability>7.0.
+- a Nvidia GPU with compute capability>7.0 and driver version >=530.41.
 - Optix 7.7
 - CUDA
 
