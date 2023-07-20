@@ -151,7 +151,7 @@ int main() {
             float* image = training_images[i];
             float* look_at = training_poses[i];
 
-            float* d_image, d_look_at;
+            float* d_image, *d_look_at;
             // allocate memory for image and look_at on GPU
             CUDA_CHECK(cudaMalloc((void **)&d_image, image_size * sizeof(float)));
             CUDA_CHECK(cudaMalloc((void **)&d_look_at, 16 * sizeof(float)));

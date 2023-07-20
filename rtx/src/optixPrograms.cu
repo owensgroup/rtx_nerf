@@ -69,7 +69,7 @@ extern "C" __global__ void __raygen__ray_march() {
              payload);
 
   unsigned int idx = launch_index.x + launch_index.y * params.width;
-  params.output[idx] = __uint_as_float(payload);
+  params.start_points[idx].x = __uint_as_float(payload);
 }
 
 extern "C" __global__ void __anyhit__ray_march() {
@@ -87,7 +87,7 @@ extern "C" __global__ void __raygen__ray_sample() {
   const uint3 launch_index = optixGetLaunchIndex();
   const float3 &delta = params.delta;
   const float3 &min_point = params.min_point;
-  const float* transform_matrix = params.transform_matrix;
+  //const float* transform_matrix = params.transform_matrix;
   float xo = min_point.x + delta.x * launch_index.x + (delta.x / 2);
   float yo = min_point.y + delta.y * launch_index.y + (delta.y / 2);
   float zo = -1 * (min_point.z + delta.z * launch_index.z);
@@ -129,7 +129,7 @@ extern "C" __global__ void __closesthit__ray_sample() {
   const uint3 launch_index = optixGetLaunchIndex();
   // For every closest hit, we update a scalar value in Global memory
   unsigned int idx = launch_index.x + launch_index.y * params.width;
-  float *output = params.output;
+  //float *output = params.output;
 
   // get t max value of ray for a hit
   // float t_current = optixGetRayTmax();
@@ -154,6 +154,6 @@ extern "C" __global__ void __closesthit__ray_sample() {
 
   // compute the end point
   // this should store sampled points in a buffer in Params
-  atomicAdd(output + idx,
-            0.2f); // can be the scalar value associated with a triangle.
+  // atomicAdd(output + idx,
+  //           0.2f); // can be the scalar value associated with a triangle.
 }

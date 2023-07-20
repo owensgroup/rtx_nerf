@@ -30,7 +30,7 @@ set(CMAKE_CUDA_ARCHITECTURES 70)
 
 get_target_property(JSON_INC_PATH jsoncpp_lib INTERFACE_INCLUDE_DIRECTORIES)
 message("${JSON_INC_PATH}")
-find_package(OptiX REQUIRED)
+find_package(OptiX7 REQUIRED)
 
 
 add_compile_definitions(TCNN_MIN_GPU_ARCH=70)
@@ -39,7 +39,7 @@ include_directories(${JSON_INC_PATH}
                     ${CMAKE_SOURCE_DIR}/loader
                     ${CMAKE_SOURCE_DIR}/rtx/include
                     ${CMAKE_SOURCE_DIR}/common/
-                    ${OptiX_INCLUDE}
+		    ${OptiX7_INCLUDE_DIRS}
                     ${CMAKE_BINARY_DIR}
                     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/include
