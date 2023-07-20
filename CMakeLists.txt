@@ -51,7 +51,7 @@ include(PTXUtilities)
 set(SOURCES
     main.cu
     rtx/src/rtxFunctions.cpp
-    #loader/data_loader.cpp
+    loader/data_loader.cpp
     common/common.cpp
 )
 

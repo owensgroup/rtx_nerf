@@ -22,7 +22,7 @@
 #include "rtx/include/params.h"
 #include "rtx/include/rtxFunctions.h"
 
-// #include "data_loader.h"
+#include "data_loader.h"
 // #include "transform_loader.h"
 
 // Configure the model
@@ -59,115 +59,6 @@ __global__ void printFloats(float* gpuPointer, int size)
         printf("Value at index %d: %f\n", tid, gpuPointer[tid]);
     }
 }
-
-struct ImageDataset {
-  std::vector<float*> images;
-  std::vector<float*> poses;
-  float focal;
-};
-
-ImageDataset load_images_json(std::string basename, std::string s) {
-    std::ifstream file(basename + "/transforms_" + s + ".json");
-    if (!file.is_open()) {
-        std::cerr << "Failed to open transform JSON file: " << basename + "/transforms_train.json" << std::endl;
-        exit(1);
-    }
-
-    std::vector<float*> images;
-    std::vector<float*> poses;
-
-    Json::Value root;
-    file >> root;
-    float camera_angle_x = root["camera_angle_x"].asFloat();
-    std::cout << "Camera Angle X: " << camera_angle_x << std::endl;
-
-    const Json::Value frames = root["frames"];
-    for (const auto& frame : frames) {
-        std::string file_path = frame["file_path"].asString();
-        float rotation = frame["rotation"].asFloat();
-        const Json::Value transform_matrix = frame["transform_matrix"];
-
-        std::cout << "File Path: " << file_path << std::endl;
-        std::cout << "Rotation: " << rotation << std::endl;
-
-        std::printf("basename = %s\n", basename.c_str());
-        // Load the image using the file path
-        file_path = basename + "/" + file_path + ".png";
-        //cv::Mat image = cv::imread(filepath, cv::IMREAD_COLOR);
-        int width, height, channels_in_file;
-        int desired_channels = 4;
-        std::printf("Loading image from %s\n", file_path.c_str());
-        float* image = stbi_loadf(file_path.c_str(), &width, &height, 
-                                            &channels_in_file, 
-                                            desired_channels);
-        float* pose = new float[16];
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                pose[i*4 + j] = transform_matrix[i][j].asFloat();
-            }
-        }
-
-        // Check if the image was loaded successfully
-        if (image == nullptr) {
-            std::cerr << "Failed to load the image." << std::endl;
-            ImageDataset dataset;
-            return dataset;
-        }
-
-        // Add the image to the vector of training images
-        images.push_back(image);
-        poses.push_back(pose);
-    }
-
-    float focal = .5 * 800 / std::tan(.5 * camera_angle_x);
-    ImageDataset dataset;
-    dataset.images = images;
-    dataset.poses = poses;
-    dataset.focal = focal;
-    return dataset;
-}
-
-std::vector<ImageDataset> load_synthetic_data(std::string directory) {
-    // Load training JSON in directory root
-    std::vector<std::string> strings = { "train", "val", "test" };
-    std::vector<ImageDataset> datasets;
-    for (const auto& string : strings) {
-        std::string basename = std::string("/home/tsaluru/opt_nerf/data/nerf_synthetic/lego/");
-        ImageDataset dataset = load_images_json(basename, string);
-        datasets.push_back(dataset);
-        break;
-    }
-
-    return datasets;
-}
-
-enum class SceneType { LLFF, SYNTHETIC };
-enum class SceneName { LEGO, FERN };
-
-std::vector<ImageDataset> load_data(SceneType type, SceneName name) {
-    std::string directory;
-    std::string filename;
-    switch (name) {
-        case SceneName::LEGO:
-            filename = "lego/";
-            break;
-        case SceneName::FERN:
-            filename = "fern/";
-            break;
-    }
-
-    switch (type) {
-        case SceneType::LLFF:
-            directory = "/data/nerf_llff_data/" + filename;
-            break;
-        case SceneType::SYNTHETIC:
-            directory = "/data/nerf_synthetic/" + filename;
-            return load_synthetic_data(directory);
-            break;
-    }
-  return std::vector<ImageDataset>();
-}
-
 __global__ void print_batch(float* batch, int batch_size, int image_size) {
     //printf("HELLO???\n");
     // int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -179,7 +70,6 @@ __global__ void print_batch(float* batch, int batch_size, int image_size) {
     //     printf("\n");
     // }
 }
-
 // Creates a grid of Axis-aligned bounding boxes with specified resolution
 // Bounding box coordinates are specified in normalized coordinates from -1 to 1
 std::vector<OptixAabb> make_grid(int resolution) {
@@ -208,82 +98,29 @@ std::vector<OptixAabb> make_grid(int resolution) {
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
-uint32_t width = 800u;
-uint32_t height = 600u;
-uint32_t depth = 1;
+
 
 
 
 int main() {
-    // // load data from files
-    // // TODO: take images and poses from json and load into DataLoader
-    // int num_epochs = EPOCHS;
-    // int batch_size = BATCH_SIZE;
-    // size_t image_size = 800*800*4;
-
-    // std::vector<ImageDataset> datasets = load_data(SceneType::SYNTHETIC, SceneName::LEGO);
-    // std::printf("BATCH SIZE GRANULARITY %d \n", tcnn::batch_size_granularity);
-    // std::printf("IMAGES IN TRAINING DATASET: %d\n", datasets[0].images.size());
-    // // calculate the number of training iterations in an epoch given the batch size
-    // int num_batches = datasets[0].images.size() / batch_size + 1;
-    // // calculate the total number of training iterations
-    // // get batch from dataloaders
-    // // get training dataset from datasets
-    // std::vector<float*> images = datasets[0].images;
-    // std::vector<float*> poses = datasets[0].poses;
+    // load data from files
+    // TODO: take images and poses from json and load into DataLoader
+    int num_epochs = EPOCHS;
+    // Loads the Training, validation, and test sets from the synthetic lego scene
+    std::vector<ImageDataset> datasets = load_data(SceneType::SYNTHETIC, SceneName::LEGO);
+    unsigned int width = datasets[0].image_width;
+    unsigned int height = datasets[0].image_height;
+    unsigned int channels = datasets[0].image_channels;
+    size_t image_size = width * height * channels;
+    // get training dataset from datasets
+    std::vector<float*> training_images = datasets[0].images;
+    std::vector<float*> training_poses = datasets[0].poses;
     
-    // auto training_set = datasets[0];
-    
-    // for (int j = 0; j < num_epochs; ++j) {
-    //     std::printf("Start training loop epoch %d\n", j);
-
-    //     // instantiate number of streams according to the number of batches
-    //     std::vector<cudaStream_t> streams(num_batches);
-    //     for (auto& stream : streams) {
-    //         cudaStreamCreate(&stream);
-    //     }
-
-    //     // instantiate batch and predicted output matrices
-    //     tcnn::GPUMatrix<float> batch(batch_size, image_size);
-    //     tcnn::GPUMatrix<float> predicted_output(batch_size, image_size);
-    //     tcnn::GPUMatrix<float> poses(batch_size, 16);
-        
-    //     float* batch_dev = batch.data();
-    //     float* predicted_output_dev = predicted_output.data();
-    //     float* poses_dev = poses.data();
-
-    //     int current_batch_size = 0;
-    //     int current_batch = 0;
-    //     for (int i = 0; i < images.size(); ++i) {
-    //         //std::printf("Adding image %d to batch %d\n", i, current_batch);
-    //         //std::memcpy(batch_host.data() + current_batch_size * image_size, images[i], image_size * sizeof(float));
-    //         cudaMemcpyAsync(batch_dev + current_batch_size * image_size, images[i], image_size * sizeof(float), cudaMemcpyHostToDevice, streams[current_batch]);
-    //         current_batch_size += 1;
-    //         if (current_batch_size >= batch_size) {
-    //             current_batch_size = 0;
-    //             //printf("Launching kernel for batch %d current_batch\n", current_batch);
-    //             print_batch<<<1, 1, 0, streams[current_batch]>>>(batch_dev, batch_size, image_size);
-    //             //model.trainer->training_step(predicted_output, batch, &loss);
-    //             current_batch ++; 
-    //         }
-    //     }
-    //     if (current_batch_size > 0) {
-    //         std::printf("Launching kernel for batch %d current_batch\n", current_batch);
-    //         print_batch<<<1, 1, 0, streams[current_batch]>>>(batch_dev, batch_size, image_size);
-    //         cudaStreamSynchronize(streams[current_batch]);
-    //         current_batch++;
-    //     }
-    // }
-    // a
-    // float transform_matrix[] = {
-    //     -0.9999021887779236,0.004192245192825794,-0.013345719315111637,-0.05379832163453102,
-    //     -0.013988681137561798, -0.2996590733528137, 0.95394366979599, 3.845470428466797,
-    //     -4.656612873077393e-10, 0.9540371894836426, 0.29968830943107605, 1.2080823183059692,
-    //     0.0, 0.0, 0.0, 1.0};
-    
-    std::string ptx_filename = BUILD_DIR "/ptx/optixPrograms.ptx";
+    // Initialize our Optix Program Groups and Pipeline
+    // We also build our initial dense acceleration structure of AABBs
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
+    std::string ptx_filename = BUILD_DIR "/ptx/optixPrograms.ptx";
 
     rtx_dataholder = new RTXDataHolder();
     std::cout << "Initializing Context \n";
@@ -297,18 +134,7 @@ int main() {
     std::cout << "Building Shader Binding Table (SBT) \n";
     rtx_dataholder->buildSBT();
     
-    
-    // std::string obj_file = "wavelet.txt";
-    // std::cout << "Building Acceleration Structure \n";
-    // std::vector<float3> vertices;
-    // std::vector<uint3> triangles;
-    // OptixAabb aabb_box = rtx_dataholder->buildAccelerationStructure(obj_file, vertices, triangles);
-    
-    // float3 delta = make_float3((aabb_box.maxX - aabb_box.minX) / width,
-    //                             (aabb_box.maxY - aabb_box.minY) / height,
-    //                             (aabb_box.maxZ - aabb_box.minZ) / depth);
-    // float3 min_point = make_float3(aabb_box.minX, aabb_box.minY, aabb_box.minZ);
-    // float3 max_point = make_float3(aabb_box.maxX, aabb_box.maxY, aabb_box.maxZ);
+    // Build our initial dense acceleration structure
     int grid_resolution = 8;
     std::cout << "Building Acceleration Structure \n";
     std::vector<OptixAabb> grid = make_grid(grid_resolution);
@@ -316,81 +142,72 @@ int main() {
     
     rtx_dataholder->initAccelerationStructure(grid);
     std::cout << "Done Building Acceleration Structure \n";
+    // We train our neural network for a specific amount of epochs
+    for (int j = 0; j < num_epochs; ++j) {
+        std::printf("Started training loop epoch %d\n", j);
+        
+        // Loop through each set of images and poses in our training dataset
+        for(int i = 0; i < training_images.size(); i++) {
+            float* image = training_images[i];
+            float* look_at = training_poses[i];
+
+            float* d_image, d_look_at;
+            // allocate memory for image and look_at on GPU
+            CUDA_CHECK(cudaMalloc((void **)&d_image, image_size * sizeof(float)));
+            CUDA_CHECK(cudaMalloc((void **)&d_look_at, 16 * sizeof(float)));
+
+            // transfer image and look_at to GPU
+            CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, stream));
+            CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, stream));
+
+            std::cout << "Allocating Buffers for Ray Intersection Tests \n";
+            // Allocate buffers to hold outputs from ray intersection tests
+            // start and end points are equal to # of AABBs in AS per ray [width * height * num_primitives]
+            float3 *d_start_points;
+            float3 *d_end_points;
+            int *d_num_hits;
+            CUDA_CHECK(cudaMalloc(
+                (void **)&d_start_points, width * height * num_primitives * sizeof(float3)));
+            CUDA_CHECK(cudaMalloc(
+                (void **)&d_end_points, width * height * num_primitives * sizeof(float3)));
+            CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
+            CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * num_primitives * sizeof(float3)));
+            CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * num_primitives * sizeof(float3)));
+            CUDA_CHECK(cudaMemset(d_num_hits, 0, width * height * sizeof(int)));
+
+            // Algorithmic parameters and data pointers used in GPU program
+            Params params;
+            // params.transform_matrix = transform_matrix;
+            float d =  2.0f / grid_resolution;
+            params.delta = make_float3(d, d, d);
+            params.min_point = make_float3(-1, -1, -1);
+            params.max_point = make_float3(1, 1, 1);
+            params.width = width;
+            params.height = height;
+            params.handle = rtx_dataholder->gas_handle;
+            params.start_points = d_start_points;
+            params.end_points = d_end_points;
+            params.num_hits = d_num_hits;
+            Params *d_param;
+            CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
+            CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
+            const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
+            std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
+            OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, stream,
+                                    reinterpret_cast<CUdeviceptr>(d_param),
+                                    sizeof(Params), &sbt_ray_march, width, height, 1));
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+
+            // CUDA Launch Sampling Kernel given entry and exit points from this perspective
+
+            // tcnn inference on point buffer from sampling kernels
+            
+            // Optix Launch Volume Rendering kernel
+
+            // tcnn compute loss and backpropagate
 
 
-    std::cout << "Allocating Buffers for Params \n";
-    // allocate and memset output image buffer
-    float *d_output;
-    CUDA_CHECK(cudaMalloc((void **)&d_output, width * height * sizeof(float)));
-    CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
-
-    // start and end points are equal to # of AABBs in AS per ray
-    float3 *d_start_points;
-    float3 *d_end_points;
-    CUDA_CHECK(cudaMalloc(
-        (void **)&d_start_points, width * height * num_primitives * sizeof(float3)));
-    CUDA_CHECK(cudaMalloc(
-        (void **)&d_end_points, width * height * num_primitives * sizeof(float3)));
-    CUDA_CHECK(cudaMemset(d_start_points, -1, width * height * num_primitives * sizeof(float3)));
-    CUDA_CHECK(cudaMemset(d_end_points, -1, width * height * num_primitives * sizeof(float3)));
-
-
-
-    
-    
-    
-    // Algorithmic parameters and data pointers used in GPU program
-    Params params;
-    // params.transform_matrix = transform_matrix;
-    params.min_point = make_float3(-1, -1, -1);
-    params.max_point = make_float3(1, 1, 1);
-    float d =  2.0f / grid_resolution;
-    params.delta = make_float3(d, d, d);
-    params.handle = rtx_dataholder->gas_handle;
-    params.width = width;
-    params.height = height;
-    params.depth = depth;
-    params.output = d_output;
-    params.start_points = d_start_points;
-    params.end_points = d_end_points;
-
-    Params *d_param;
-    CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
-    CUDA_CHECK(
-        cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
-
-    const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
-    std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
-    OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, stream,
-                            reinterpret_cast<CUdeviceptr>(d_param),
-                            sizeof(Params), &sbt_ray_march, width, height, 1));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << "Writing output to file \n";
-    float *h_output1 = new float[width * height];
-    CUDA_CHECK(cudaMemcpy(h_output1, d_output, width * height * sizeof(float),
-                           cudaMemcpyDeviceToHost));
-    stbi_write_png("ray_march.png", width, height, 1, h_output1, width);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-
-    // CUDA_CHECK(cudaMemset(d_output, 0, width * height * sizeof(float)));
-    // const OptixShaderBindingTable &sbt_ray_sample =
-    //     rtx_dataholder->sbt_ray_sample;
-    // std::cout << "Launching Ray Tracer in Ray Sample Mode \n";
-    // OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_sample, stream,
-    //                         reinterpret_cast<CUdeviceptr>(d_param),
-    //                         sizeof(Params), &sbt_ray_march, width, height,
-    //                         depth));
-    // CUDA_CHECK(cudaStreamSynchronize(stream));
-
-    // std::cout << "Writing output to file \n";
-    // float *h_output2 = new float[width * height];
-    // CUDA_CHECK(cudaMemcpy(h_output2, d_output, width * height * sizeof(float),
-    //                        cudaMemcpyDeviceToHost));
-                        
-    // stbi_write_png("ray_sample.png", width, height, 1, h_output2, width);
-    // std::cout << "Cleaning up ... \n";
-    CUDA_CHECK(cudaFree(d_output));
-    CUDA_CHECK(cudaFree(d_param));
-    delete rtx_dataholder;
+        }
+    }
     return 0;
 }
