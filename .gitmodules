@@ -1,0 +1,7 @@
+[submodule "jsoncpp"]
+    path = lib/jsoncpp
+    url = https://github.com/open-source-parsers/jsoncpp.git
+
+[submodule "tiny-cuda-nn"]
+    path = lib/tiny-cuda-nn
+    url = https://github.com/NVlabs/tiny-cuda-nn.git

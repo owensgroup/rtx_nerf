@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.12)
 include(FetchContent)
 project(optx_nerf LANGUAGES CXX CUDA)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 enable_language(CUDA)
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD 14)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
 
@@ -67,17 +67,8 @@ message("${OpenCV_LIBS}")
 # Link against the JsonCpp library
 target_link_libraries(optx_nerf jsoncpp_lib cuda ${OptiX_LIBRARY} 
             ${CUDA_LIBRARIES}
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_core.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_calib3d.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_features2d.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_flann.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_imgcodecs.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_imgproc.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_ml.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_photo.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_videoio.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_dnn.a
             ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/libtiny-cuda-nn.a
-            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/dependencies/fmt/libfmt.a)
+            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/dependencies/fmt/libfmt.a
+            ${CMAKE_DL_LIBS})
 
 add_ptx_targets(optx_nerf optixPrograms)
