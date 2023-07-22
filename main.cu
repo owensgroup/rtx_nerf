@@ -188,6 +188,7 @@ int main() {
             params.start_points = d_start_points;
             params.end_points = d_end_points;
             params.num_hits = d_num_hits;
+            params.num_primitives = num_primitives;
             Params *d_param;
             CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
@@ -199,7 +200,11 @@ int main() {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // CUDA Launch Sampling Kernel given entry and exit points from this perspective
-
+            d_start_points = params.start_points;
+            d_end_points = params.end_points;
+            d_num_hits = params.num_hits;
+            std::cout << "Launching Sampling Kernel \n";
+            int num_points = 0;
             // tcnn inference on point buffer from sampling kernels
             
             // Optix Launch Volume Rendering kernel

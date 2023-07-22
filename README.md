@@ -7,6 +7,7 @@ You will need:
 - a Nvidia GPU with compute capability>7.0 and driver version >=530.41.
 - Optix 7.7
 - CUDA
+- CMake > 3.18
 
 ## Instructions
 In order to setup the repository, first download Optix. Then clone
