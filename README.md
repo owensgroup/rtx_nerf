@@ -9,7 +9,30 @@ You will need:
 - CUDA
 
 ## Instructions
-In order to setup the repository, first download Optix. Then from the root run CMake
+In order to setup the repository, first download Optix. Then clone
+the repo. You'l first need to setup submodules.
+```
+git submodule init
+git submodule update --init --recursive
+```
+
+If your Linux doesn't already have them installed install the following:
+```
+sudo apt-get install build-essential
+```
+
+We then need to build tiny-cuda-nn (this takes time)
+```
+cd lib/tiny-cuda-nn
+mkdir build && cd build
+cmake ..
+make -j
+```
+
+Now that the tiny-cuda-nn static library is built we can compile 
+the rtx_nerf project.
+
+Navigate to the project root, and run the following:
 ```
 mkdir build && cd build
 cmake ../ -DOPTIX_HOME=[/path/to/optix/]
