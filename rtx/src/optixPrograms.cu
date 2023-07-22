@@ -158,15 +158,6 @@ extern "C" __global__ void __raygen__ray_sample() {
   // tmax should be 
   optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
              visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex);
-  
-  // while() {
-  //   // optixgetpayload should retrive exit points from previous rays
-  //   // for each exit point
-  //   // payload1 saves x, payload2 saves y, payload3 saves z
-
-  //   optixTrace(params.handle, , ray_direction, tmin, tmax, ray_time,
-  //            visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex)
-  // }
 }
 
 // extern "C" __global__ void __anyhit__ray_sample() {}
