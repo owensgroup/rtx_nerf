@@ -215,7 +215,6 @@ int main() {
             d_end_points = params.end_points;
             d_num_hits = params.num_hits;
             std::cout << "Launching Sampling Kernel \n";
-            int num_points = 0;
             // tcnn inference on point buffer from sampling kernels
             
             // Optix Launch Volume Rendering kernel
