@@ -106,8 +106,9 @@ int main() {
     // load data from files
     // TODO: take images and poses from json and load into DataLoader
     int num_epochs = EPOCHS;
+    std::cout << "---------------------- Loading Data ----------------------\n";
     // Loads the Training, validation, and test sets from the synthetic lego scene
-    std::vector<ImageDataset> datasets = load_data(SceneType::SYNTHETIC, SceneName::LEGO);
+    std::vector<ImageDataset> datasets = load_data(SceneType::SYNTHETIC, SyntheticName::LEGO);
     auto train_set = datasets[0];
     unsigned int width = train_set.image_width;
     unsigned int height = train_set.image_height;
@@ -116,12 +117,14 @@ int main() {
     // get training dataset from datasets
     std::vector<float*> training_images = datasets[0].images;
     std::vector<float*> training_poses = datasets[0].poses;
-    
+    std::cout << "---------------------- Data Loaded ----------------------\n\n\n";
     // Initialize our Optix Program Groups and Pipeline
     // We also build our initial dense acceleration structure of AABBs
+
+    std::cout << "---------------------- Initializing Optix ----------------------\n";
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
-    std::string ptx_filename = BUILD_DIR "/ptx/optixPrograms.ptx";
+    std::string ptx_filename = BUILD_DIR "bin/ptx/optixPrograms.ptx";
 
     rtx_dataholder = new RTXDataHolder();
     std::cout << "Initializing Context \n";
@@ -143,6 +146,29 @@ int main() {
     
     rtx_dataholder->initAccelerationStructure(grid);
     std::cout << "Done Building Acceleration Structure \n";
+    std::cout << "---------------------- Done Initializing Optix ----------------------\n\n\n";
+
+    std::cout << "Allocating Buffers on GPU" << std::endl;
+    float* d_image, *d_look_at;
+    CUDA_CHECK(cudaMalloc((void **)&d_image, image_size * sizeof(float)));
+    CUDA_CHECK(cudaMalloc((void **)&d_look_at, 16 * sizeof(float)));
+    std::cout << "Image Buffers Allocated on GPU" << std::endl;
+    // Allocate buffers to hold outputs from ray intersection tests
+    // start and end points are equal to # of AABBs in AS per ray [width * height * num_primitives]
+    float3 *d_start_points;
+    float3 *d_end_points;
+    int *d_num_hits;
+            
+    CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * num_primitives * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * num_primitives * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
+    std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
+
+    Params *d_param;
+    CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
+    std::cout << "Params Buffer Allocated on GPU" << std::endl;
+
+
     // We train our neural network for a specific amount of epochs
     for (int j = 0; j < num_epochs; ++j) {
         std::printf("Started training loop epoch %d\n", j);
@@ -152,26 +178,11 @@ int main() {
             float* image = training_images[i];
             float* look_at = training_poses[i];
 
-            float* d_image, *d_look_at;
-            // allocate memory for image and look_at on GPU
-            CUDA_CHECK(cudaMalloc((void **)&d_image, image_size * sizeof(float)));
-            CUDA_CHECK(cudaMalloc((void **)&d_look_at, 16 * sizeof(float)));
-
             // transfer image and look_at to GPU
             CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, stream));
             CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, stream));
 
-            std::cout << "Allocating Buffers for Ray Intersection Tests \n";
-            // Allocate buffers to hold outputs from ray intersection tests
-            // start and end points are equal to # of AABBs in AS per ray [width * height * num_primitives]
-            float3 *d_start_points;
-            float3 *d_end_points;
-            int *d_num_hits;
-            CUDA_CHECK(cudaMalloc(
-                (void **)&d_start_points, width * height * num_primitives * sizeof(float3)));
-            CUDA_CHECK(cudaMalloc(
-                (void **)&d_end_points, width * height * num_primitives * sizeof(float3)));
-            CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
+            // Memset ray intersection buffers
             CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * num_primitives * sizeof(float3)));
             CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * num_primitives * sizeof(float3)));
             CUDA_CHECK(cudaMemset(d_num_hits, 0, width * height * sizeof(int)));
@@ -190,8 +201,7 @@ int main() {
             params.end_points = d_end_points;
             params.num_hits = d_num_hits;
             params.num_primitives = num_primitives;
-            Params *d_param;
-            CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
+            
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
             std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
@@ -211,7 +221,6 @@ int main() {
             // Optix Launch Volume Rendering kernel
 
             // tcnn compute loss and backpropagate
-
 
         }
     }
