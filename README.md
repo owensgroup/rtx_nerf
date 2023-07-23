@@ -48,3 +48,9 @@ make
 ## Running the executables
 First download the data from the [NeRF website](https://www.matthewtancik.com/nerf). 
 Then create a data folder and extract the data.
+
+From the project root, run the executable
+```
+./build/bin/optx_nerf
+```
+
