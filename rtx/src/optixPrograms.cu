@@ -44,9 +44,13 @@ extern "C" __global__ void __raygen__ray_march() {
 
   // generate ray origin
   // TODO: Apply transform matrix to ray origin
+  // look_at is the 4x4 transform matrix
+  float* look_at = params.look_at;
+
   float xo = min_point.x + delta.x * launch_index.x + (delta.x / 2);
   float yo = min_point.y + delta.y * launch_index.y + (delta.y / 2);
-  float zo = min_point.z; 
+  float zo = min_point.z;
+   
   float3 ray_origin = make_float3(xo, yo, zo);
 
   float3 ray_direction = make_float3(0.0, 0.0, 1.0);
