@@ -67,12 +67,12 @@ extern "C" __global__ void __raygen__ray_march() {
   unsigned int SBTstride = 0;
   unsigned int missSBTIndex = 0;
   unsigned int payload = 0;
+  printf("ray origin: %f, %f, %f\n", xo, yo, zo);
+  printf("ray direction: %f, %f, %f\n", ray_direction.x, ray_direction.y, ray_direction.z);
+  printf("Tracing ray (%d, %d)\n", launch_index.x, launch_index.y);
   optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
              visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
              payload);
-
-  unsigned int idx = launch_index.x + launch_index.y * params.width;
-  params.start_points[idx].x = __uint_as_float(payload);
 }
 
 extern "C" __global__ void __anyhit__ray_march() {
@@ -93,6 +93,7 @@ extern "C" __global__ void __closesthit__ray_march() {
   // compute the ray entry point from t_min
   float3 ray_direction = optixGetWorldRayDirection();
   float3 ray_origin = optixGetWorldRayOrigin();
+  
   float s_x = ray_origin.x + t_min * ray_direction.x;
   float s_y = ray_origin.y + t_min * ray_direction.y;
   float s_z = ray_origin.z + t_min * ray_direction.z;
@@ -102,6 +103,8 @@ extern "C" __global__ void __closesthit__ray_march() {
   float e_x = ray_origin.x + t_max * ray_direction.x;
   float e_y = ray_origin.y + t_max * ray_direction.y;
   float e_z = ray_origin.z + t_max * ray_direction.z;
+  printf("entry point: %f, %f, %f\n", s_x, s_y, s_z);
+  printf("exit point: %f, %f, %f\n", e_x, e_y, e_z);
   float3 end = make_float3(e_x, e_y, e_z);
 
   // get the optixAabb that we currenty intersected with
