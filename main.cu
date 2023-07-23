@@ -108,9 +108,10 @@ int main() {
     int num_epochs = EPOCHS;
     // Loads the Training, validation, and test sets from the synthetic lego scene
     std::vector<ImageDataset> datasets = load_data(SceneType::SYNTHETIC, SceneName::LEGO);
-    unsigned int width = datasets[0].image_width;
-    unsigned int height = datasets[0].image_height;
-    unsigned int channels = datasets[0].image_channels;
+    auto train_set = datasets[0];
+    unsigned int width = train_set.image_width;
+    unsigned int height = train_set.image_height;
+    unsigned int channels = train_set.image_channels;
     size_t image_size = width * height * channels;
     // get training dataset from datasets
     std::vector<float*> training_images = datasets[0].images;

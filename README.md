@@ -9,7 +9,7 @@ You will need:
 - CUDA
 - CMake > 3.18
 
-## Instructions
+## Initial build and dependencies
 In order to setup the repository, first download Optix. Then clone
 the repo. You'l first need to setup submodules.
 ```
@@ -45,3 +45,6 @@ In order to build in debug mode
 cmake ../ -DCMAKE_BUILD_TYPE=Debug -DOPTIX_HOME=[/path/to/optix/]
 make
 ```
+## Running the executables
+First download the data from the [NeRF website](https://www.matthewtancik.com/nerf). 
+Then create a data folder and extract the data.
