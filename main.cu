@@ -23,7 +23,6 @@
 #include "rtx/include/rtxFunctions.h"
 
 #include "data_loader.h"
-// #include "transform_loader.h"
 
 // Configure the model
 nlohmann::json config = {
@@ -72,6 +71,7 @@ __global__ void print_batch(float* batch, int batch_size, int image_size) {
 }
 // Creates a grid of Axis-aligned bounding boxes with specified resolution
 // Bounding box coordinates are specified in normalized coordinates from -1 to 1
+// TODO: make this a CUDA kernel
 std::vector<OptixAabb> make_grid(int resolution) {
     std::vector<OptixAabb> grid;
     float box_length = 2.0f/ (float)resolution;

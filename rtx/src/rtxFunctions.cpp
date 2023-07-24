@@ -324,6 +324,7 @@ RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
   accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
   accelOptions.motionOptions.numKeys = 0;
 
+  // TODO: AS build with compaction
   std::cout << "Computing AS Buffer Mem Usage" << std::endl;
   OptixAccelBufferSizes bufferSizes;
   OPTIX_ERROR_CHECK(optixAccelComputeMemoryUsage(optix_context, &accelOptions,
