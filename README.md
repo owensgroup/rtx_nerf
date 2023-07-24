@@ -1,4 +1,4 @@
-# rtx_nerf
+# RTX NeRF
 An implementation of NeRF acceleration using RTX cores to compute ray-grid intersections
 
 # Setup
