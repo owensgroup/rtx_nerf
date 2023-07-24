@@ -75,8 +75,7 @@ std::vector<ImageDataset> load_synthetic_data(std::string directory) {
     std::vector<std::string> strings = { "train", "val", "test" };
     std::vector<ImageDataset> datasets;
     for (const auto& string : strings) {
-        std::string basename = std::string("/home/tsaluru/opt_nerf/data/nerf_synthetic/lego/");
-        ImageDataset dataset = load_images_json(basename, string);
+        ImageDataset dataset = load_images_json(directory, string);
         datasets.push_back(dataset);
         break;
     }
@@ -84,24 +83,42 @@ std::vector<ImageDataset> load_synthetic_data(std::string directory) {
     return datasets;
 }
 
-std::vector<ImageDataset> load_data(SceneType type, SceneName name) {
+std::vector<ImageDataset> load_data(SceneType type, SyntheticName name) {
     std::string directory;
     std::string filename;
     switch (name) {
-        case SceneName::LEGO:
+        case SyntheticName::CHAIR:
+            filename = "chair/";
+            break;
+        case SyntheticName::DRUMS:
+            filename = "drums/";
+            break;
+        case SyntheticName::FICUS:
+            filename = "ficus/";
+            break;
+        case SyntheticName::HOTDOG:
+            filename = "hotdog/";
+            break;
+        case SyntheticName::LEGO:
             filename = "lego/";
             break;
-        case SceneName::FERN:
+        case SyntheticName::MATERIALS:
             filename = "fern/";
+            break;
+        case SyntheticName::MIC:
+            filename = "mic/";
+            break;
+        case SyntheticName::SHIP:
+            filename = "ship/";
             break;
     }
 
     switch (type) {
         case SceneType::LLFF:
-            directory = "/data/nerf_llff_data/" + filename;
+            directory = "./data/nerf_llff_data/" + filename;
             break;
         case SceneType::SYNTHETIC:
-            directory = "/data/nerf_synthetic/" + filename;
+            directory = "./data/nerf_synthetic/" + filename;
             return load_synthetic_data(directory);
             break;
     }

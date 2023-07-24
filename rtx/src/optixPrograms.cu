@@ -44,9 +44,13 @@ extern "C" __global__ void __raygen__ray_march() {
 
   // generate ray origin
   // TODO: Apply transform matrix to ray origin
+  // look_at is the 4x4 transform matrix
+  float* look_at = params.look_at;
+
   float xo = min_point.x + delta.x * launch_index.x + (delta.x / 2);
   float yo = min_point.y + delta.y * launch_index.y + (delta.y / 2);
-  float zo = min_point.z; 
+  float zo = min_point.z;
+   
   float3 ray_origin = make_float3(xo, yo, zo);
 
   float3 ray_direction = make_float3(0.0, 0.0, 1.0);
@@ -63,13 +67,12 @@ extern "C" __global__ void __raygen__ray_march() {
   unsigned int SBTstride = 0;
   unsigned int missSBTIndex = 0;
   unsigned int payload = 0;
-  printf("Calling Optix Trace: %d, %d\n", launch_index.x, launch_index.y);
+  printf("ray origin: %f, %f, %f\n", xo, yo, zo);
+  printf("ray direction: %f, %f, %f\n", ray_direction.x, ray_direction.y, ray_direction.z);
+  printf("Tracing ray (%d, %d)\n", launch_index.x, launch_index.y);
   optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
              visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
              payload);
-
-  unsigned int idx = launch_index.x + launch_index.y * params.width;
-  params.output[idx] = __uint_as_float(payload);
 }
 
 extern "C" __global__ void __anyhit__ray_march() {
@@ -81,13 +84,63 @@ extern "C" __global__ void __anyhit__ray_march() {
 }
 
 // extern "C" __global__ void __miss__ray_march() {}
-// extern "C" __global__ void __closesthit__ray_march() {}
+extern "C" __global__ void __closesthit__ray_march() {
+  // For every closest hit, grab the entry and exit point for the ray
+  const uint3 launch_index = optixGetLaunchIndex();
+  float t_min = optixGetRayTmin();
+  float t_max = optixGetRayTmax(); // t_max returns smallest reported hitT
+
+  // compute the ray entry point from t_min
+  float3 ray_direction = optixGetWorldRayDirection();
+  float3 ray_origin = optixGetWorldRayOrigin();
+  
+  float s_x = ray_origin.x + t_min * ray_direction.x;
+  float s_y = ray_origin.y + t_min * ray_direction.y;
+  float s_z = ray_origin.z + t_min * ray_direction.z;
+  float3 start = make_float3(s_x, s_y, s_z);
+
+  // compute the ray exit point from t_max
+  float e_x = ray_origin.x + t_max * ray_direction.x;
+  float e_y = ray_origin.y + t_max * ray_direction.y;
+  float e_z = ray_origin.z + t_max * ray_direction.z;
+  printf("entry point: %f, %f, %f\n", s_x, s_y, s_z);
+  printf("exit point: %f, %f, %f\n", e_x, e_y, e_z);
+  float3 end = make_float3(e_x, e_y, e_z);
+
+  // get the optixAabb that we currenty intersected with
+  uint primitiveIndex = optixGetPrimitiveIndex();
+
+  // store the entry and exit points of this ray in this AABB in param buffers
+  // entry_points is an array with dimension [H, W, numPrimitives]
+  // exit_points is an array with dimension [H, W, numPrimitives]
+  unsigned int idx = primitiveIndex + launch_index.x * params.num_primitives +
+                     launch_index.y * params.num_primitives * params.width;
+  params.start_points[idx] = start;
+  params.end_points[idx] = end;
+
+  // update the number of intersections for this ray
+  unsigned int idx2 = launch_index.x + launch_index.y * params.width;
+  params.num_hits[idx2] += 1;
+
+  // relaunch a ray from the exit point of the current AABB
+  // this ray will be used to find the next AABB that the ray intersects with
+  // the ray will be launched in the same direction as the original ray
+  OptixVisibilityMask visibilityMask = 255;
+  unsigned int rayFlags = OPTIX_RAY_FLAG_NONE;
+  unsigned int SBToffset = 0;
+  unsigned int SBTstride = 0;
+  unsigned int missSBTIndex = 0;
+  unsigned int payload = 0;
+  optixTrace(params.handle, end, ray_direction, 0, 100, 0,
+             visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
+             payload);
+}
 
 extern "C" __global__ void __raygen__ray_sample() {
   const uint3 launch_index = optixGetLaunchIndex();
   const float3 &delta = params.delta;
   const float3 &min_point = params.min_point;
-  const float* transform_matrix = params.transform_matrix;
+  //const float* transform_matrix = params.transform_matrix;
   float xo = min_point.x + delta.x * launch_index.x + (delta.x / 2);
   float yo = min_point.y + delta.y * launch_index.y + (delta.y / 2);
   float zo = -1 * (min_point.z + delta.z * launch_index.z);
@@ -111,15 +164,6 @@ extern "C" __global__ void __raygen__ray_sample() {
   // tmax should be 
   optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
              visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex);
-  
-  // while() {
-  //   // optixgetpayload should retrive exit points from previous rays
-  //   // for each exit point
-  //   // payload1 saves x, payload2 saves y, payload3 saves z
-
-  //   optixTrace(params.handle, , ray_direction, tmin, tmax, ray_time,
-  //            visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex)
-  // }
 }
 
 // extern "C" __global__ void __anyhit__ray_sample() {}
@@ -129,7 +173,7 @@ extern "C" __global__ void __closesthit__ray_sample() {
   const uint3 launch_index = optixGetLaunchIndex();
   // For every closest hit, we update a scalar value in Global memory
   unsigned int idx = launch_index.x + launch_index.y * params.width;
-  float *output = params.output;
+  //float *output = params.output;
 
   // get t max value of ray for a hit
   // float t_current = optixGetRayTmax();
@@ -154,6 +198,6 @@ extern "C" __global__ void __closesthit__ray_sample() {
 
   // compute the end point
   // this should store sampled points in a buffer in Params
-  atomicAdd(output + idx,
-            0.2f); // can be the scalar value associated with a triangle.
+  // atomicAdd(output + idx,
+  //           0.2f); // can be the scalar value associated with a triangle.
 }

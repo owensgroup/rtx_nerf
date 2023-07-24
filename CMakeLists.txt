@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.12)
 include(FetchContent)
 project(optx_nerf LANGUAGES CXX CUDA)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 enable_language(CUDA)
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD 14)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
 
@@ -30,7 +30,7 @@ set(CMAKE_CUDA_ARCHITECTURES 70)
 
 get_target_property(JSON_INC_PATH jsoncpp_lib INTERFACE_INCLUDE_DIRECTORIES)
 message("${JSON_INC_PATH}")
-find_package(OptiX REQUIRED)
+find_package(OptiX7 REQUIRED)
 
 
 add_compile_definitions(TCNN_MIN_GPU_ARCH=70)
@@ -39,7 +39,7 @@ include_directories(${JSON_INC_PATH}
                     ${CMAKE_SOURCE_DIR}/loader
                     ${CMAKE_SOURCE_DIR}/rtx/include
                     ${CMAKE_SOURCE_DIR}/common/
-                    ${OptiX_INCLUDE}
+		    ${OptiX7_INCLUDE_DIRS}
                     ${CMAKE_BINARY_DIR}
                     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/include
@@ -67,17 +67,8 @@ message("${OpenCV_LIBS}")
 # Link against the JsonCpp library
 target_link_libraries(optx_nerf jsoncpp_lib cuda ${OptiX_LIBRARY} 
             ${CUDA_LIBRARIES}
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_core.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_calib3d.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_features2d.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_flann.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_imgcodecs.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_imgproc.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_ml.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_photo.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_videoio.a
-            # ${OpenCV_BINARY_DIR}/lib/libopencv_dnn.a
             ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/libtiny-cuda-nn.a
-            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/dependencies/fmt/libfmt.a)
+            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/dependencies/fmt/libfmt.a
+            ${CMAKE_DL_LIBS})
 
 add_ptx_targets(optx_nerf optixPrograms)

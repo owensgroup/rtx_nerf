@@ -67,7 +67,7 @@
 #define BUILD_DIR "Debug"
 #endif
 #else
-#define BUILD_DIR "./"
+#define BUILD_DIR "./build/"
 #endif
 #define OBJ_DIR "../resources/"
 

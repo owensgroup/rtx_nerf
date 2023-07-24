@@ -7,7 +7,15 @@
 
 
 enum class SceneType { LLFF, SYNTHETIC };
-enum class SceneName { LEGO, FERN };
+enum class SyntheticName { 
+  CHAIR,
+  DRUMS,
+  FICUS,
+  HOTDOG,
+  LEGO,
+  MATERIALS,
+  MIC,
+  SHIP};
 
 struct ImageDataset {
   std::vector<float*> images;
@@ -20,6 +28,6 @@ struct ImageDataset {
 
 ImageDataset load_images_json(std::string basename, std::string s);
 std::vector<ImageDataset> load_synthetic_data(std::string directory);
-std::vector<ImageDataset> load_data(SceneType type, SceneName name);
+std::vector<ImageDataset> load_data(SceneType type, SyntheticName name);
 
 #endif
