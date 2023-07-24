@@ -53,7 +53,7 @@ void RTXDataHolder::initContext() {
   OPTIX_CHECK(optixInit());
   OptixDeviceContextOptions options = {};
   options.logCallbackFunction = &optixLogCallback;
-  options.logCallbackLevel = 3; // This goes upto level 4
+  options.logCallbackLevel = 4; // This goes upto level 4
   OPTIX_CHECK(optixDeviceContextCreate(0, &options, &optix_context));
 }
 
@@ -72,8 +72,10 @@ void RTXDataHolder::createModule(const std::string ptx_filename) {
   OptixModuleCompileOptions module_compile_options = {};
   module_compile_options.maxRegisterCount =
       OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-  module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3;
-  module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+  //module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3;
+  //module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+  module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+  module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 
   pipeline_compile_options.usesMotionBlur = 0;
   pipeline_compile_options.traversableGraphFlags =
@@ -105,8 +107,8 @@ void RTXDataHolder::createProgramGroups() {
 
     OptixProgramGroupDesc miss_prog_group_desc = {}; // Miss program
     miss_prog_group_desc.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
-    miss_prog_group_desc.miss.module = nullptr;
-    miss_prog_group_desc.miss.entryFunctionName = nullptr;
+    miss_prog_group_desc.miss.module = module;
+    miss_prog_group_desc.miss.entryFunctionName = "__miss__ray_march";
 
     OPTIX_CHECK(optixProgramGroupCreate(optix_context, &miss_prog_group_desc,
                                         1, // num program groups
@@ -118,8 +120,9 @@ void RTXDataHolder::createProgramGroups() {
     hitgroup_prog_group_desc.hitgroup.moduleCH = module;
     hitgroup_prog_group_desc.hitgroup.entryFunctionNameCH = "__closesthit__ray_march";
     hitgroup_prog_group_desc.hitgroup.moduleAH = module;
-    hitgroup_prog_group_desc.hitgroup.entryFunctionNameAH =
-        "__anyhit__ray_march";
+    hitgroup_prog_group_desc.hitgroup.entryFunctionNameAH = "__anyhit__ray_march";
+    hitgroup_prog_group_desc.hitgroup.moduleIS = module;
+    hitgroup_prog_group_desc.hitgroup.entryFunctionNameIS = "__intersection__ray_march";
 
     OPTIX_CHECK(
         optixProgramGroupCreate(optix_context, &hitgroup_prog_group_desc,
@@ -286,12 +289,12 @@ void RTXDataHolder::buildSBT() {
 
 // initializes a grid of AABBs and builds an acceleration structure
 // handle to structure is stored in gas_handle
-void
+OptixAabb*
 RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
   
   std::cout << "Allocating Device Memory for AABBs" << std::endl;
   int numPrimitives = grid.size();
-  CUdeviceptr d_aabbBuffer;
+  OptixAabb* d_aabbBuffer;
   CUDA_CHECK(cudaMalloc((void **)&d_aabbBuffer, numPrimitives * sizeof(OptixAabb)));
   CUDA_CHECK(cudaMemcpy((void *)d_aabbBuffer, grid.data(),
                             numPrimitives * sizeof(OptixAabb), cudaMemcpyHostToDevice));
@@ -304,7 +307,7 @@ RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
   std::cout << "Building Acceleration Structure" << std::endl;
   OptixBuildInput customInput = {};
   customInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-  customInput.customPrimitiveArray.aabbBuffers = &d_aabbBuffer;
+  customInput.customPrimitiveArray.aabbBuffers = reinterpret_cast<CUdeviceptr*>(&d_aabbBuffer);
   customInput.customPrimitiveArray.numPrimitives = numPrimitives;
   customInput.customPrimitiveArray.strideInBytes = 0;
   customInput.customPrimitiveArray.flags = inputFlags;
@@ -333,12 +336,17 @@ RTXDataHolder::initAccelerationStructure(const std::vector<OptixAabb> &grid) {
   std::cout << "Allocating AS Buffers" << std::endl;
   cudaMalloc((void**)&outputBuffer, bufferSizes.outputSizeInBytes);
   cudaMalloc((void**)&tempBuffer, bufferSizes.tempSizeInBytes);
+  std::printf("AS size in bytes: outputBuffer = %lu, temBuffer = %lu\n",
+      bufferSizes.outputSizeInBytes, bufferSizes.tempSizeInBytes);
 
   std::cout << "Call Optix Build" << std::endl;
   OptixResult results = optixAccelBuild(optix_context, stream,
       &accelOptions, &customInput, 1, tempBuffer,
       bufferSizes.tempSizeInBytes, outputBuffer,
       bufferSizes.outputSizeInBytes, &gas_handle, nullptr, 0);  
+  OPTIX_ERROR_CHECK(results);
+
+  return d_aabbBuffer;
 }
 
 

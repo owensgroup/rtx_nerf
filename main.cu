@@ -86,6 +86,7 @@ std::vector<OptixAabb> make_grid(int resolution) {
                 aabb.minZ = -1.0f + z * box_length;
                 aabb.maxZ = -1.0f + z * box_length + box_length;
                 grid.push_back(aabb);
+                std::printf("aabb (%.2f %.2f %.2f) (%.2f %.2f %.2f)\n", aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ);
             }
         }
     }
@@ -139,12 +140,12 @@ int main() {
     rtx_dataholder->buildSBT();
     
     // Build our initial dense acceleration structure
-    int grid_resolution = 8;
+    int grid_resolution = 2;
     std::cout << "Building Acceleration Structure \n";
     std::vector<OptixAabb> grid = make_grid(grid_resolution);
     int num_primitives = grid.size();
     
-    rtx_dataholder->initAccelerationStructure(grid);
+    OptixAabb* d_aabb = rtx_dataholder->initAccelerationStructure(grid);
     std::cout << "Done Building Acceleration Structure \n";
     std::cout << "---------------------- Done Initializing Optix ----------------------\n\n\n";
 
@@ -197,6 +198,7 @@ int main() {
             params.width = width;
             params.height = height;
             params.handle = rtx_dataholder->gas_handle;
+            params.aabb = d_aabb;
             params.start_points = d_start_points;
             params.end_points = d_end_points;
             params.num_hits = d_num_hits;
@@ -221,7 +223,9 @@ int main() {
 
             // tcnn compute loss and backpropagate
 
+	    break;
         }
+        break;
     }
     return 0;
 }

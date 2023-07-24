@@ -33,6 +33,7 @@
 #include "params.h"
 #include <optix.h>
 
+#define DBG_RAY 3
 
 extern "C" static __constant__ Params params;
 
@@ -62,14 +63,19 @@ extern "C" __global__ void __raygen__ray_march() {
   // for each part of the scene, a mask is assigned and when
   // the ray intersects a bitwise and is performed 
   OptixVisibilityMask visibilityMask = 255;
-  unsigned int rayFlags = OPTIX_RAY_FLAG_NONE;
+  unsigned int rayFlags = OPTIX_RAY_FLAG_DISABLE_ANYHIT;
   unsigned int SBToffset = 0;
   unsigned int SBTstride = 0;
   unsigned int missSBTIndex = 0;
   unsigned int payload = 0;
-  printf("ray origin: %f, %f, %f\n", xo, yo, zo);
-  printf("ray direction: %f, %f, %f\n", ray_direction.x, ray_direction.y, ray_direction.z);
-  printf("Tracing ray (%d, %d)\n", launch_index.x, launch_index.y);
+  if (launch_index.x + launch_index.y < DBG_RAY) {
+    printf("Tracing ray (%d, %d)\n"
+        "ray origin: %f, %f, %f\n"
+        "ray direction: %f, %f, %f\n",
+        launch_index.x, launch_index.y,
+        xo, yo, zo,
+        ray_direction.x, ray_direction.y, ray_direction.z);
+  }
   optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
              visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
              payload);
@@ -83,57 +89,86 @@ extern "C" __global__ void __anyhit__ray_march() {
   optixIgnoreIntersection();
 }
 
-// extern "C" __global__ void __miss__ray_march() {}
+extern "C" __global__ void __intersection__ray_march() {
+  const uint3 launch_index = optixGetLaunchIndex();
+  if (launch_index.x + launch_index.y < DBG_RAY) {
+    printf("ray (%i, %i) IS\n", launch_index.x, launch_index.y);
+  }
+  optixReportIntersection(0, 0);
+}
+
+extern "C" __global__ void __miss__ray_march() {
+  const uint3 launch_index = optixGetLaunchIndex();
+  if (launch_index.x + launch_index.y <  DBG_RAY) {
+    printf("ray (%i, %i) MISS\n", launch_index.x, launch_index.y);
+  }
+}
+
 extern "C" __global__ void __closesthit__ray_march() {
   // For every closest hit, grab the entry and exit point for the ray
   const uint3 launch_index = optixGetLaunchIndex();
-  float t_min = optixGetRayTmin();
+  // get the optixAabb that we currenty intersected with
+  uint primitiveIndex = optixGetPrimitiveIndex();
+  //float t_min = optixGetRayTmin();
+  float t_hit = optixGetRayTmax(); // t_max returns smallest reported hitT
   float t_max = optixGetRayTmax(); // t_max returns smallest reported hitT
 
   // compute the ray entry point from t_min
   float3 ray_direction = optixGetWorldRayDirection();
   float3 ray_origin = optixGetWorldRayOrigin();
   
-  float s_x = ray_origin.x + t_min * ray_direction.x;
-  float s_y = ray_origin.y + t_min * ray_direction.y;
-  float s_z = ray_origin.z + t_min * ray_direction.z;
+  float s_x = ray_origin.x + t_hit * ray_direction.x;
+  float s_y = ray_origin.y + t_hit * ray_direction.y;
+  float s_z = ray_origin.z + t_hit * ray_direction.z;
   float3 start = make_float3(s_x, s_y, s_z);
 
   // compute the ray exit point from t_max
-  float e_x = ray_origin.x + t_max * ray_direction.x;
-  float e_y = ray_origin.y + t_max * ray_direction.y;
-  float e_z = ray_origin.z + t_max * ray_direction.z;
-  printf("entry point: %f, %f, %f\n", s_x, s_y, s_z);
-  printf("exit point: %f, %f, %f\n", e_x, e_y, e_z);
+  OptixAabb aabb = params.aabb[primitiveIndex];
+  float plane_x = ray_direction.x < 0 ? aabb.minX : aabb.maxX;
+  float plane_y = ray_direction.y < 0 ? aabb.minY : aabb.maxY;
+  float plane_z = ray_direction.z < 0 ? aabb.minZ : aabb.maxZ;
+  float t_x = (plane_x - s_x) / ray_direction.x;
+  float t_y = (plane_y - s_y) / ray_direction.y;
+  float t_z = (plane_z - s_z) / ray_direction.z;
+  float t_e = min(min(t_x, t_y), t_z);
+
+  float e_x = ray_origin.x + t_e * ray_direction.x;
+  float e_y = ray_origin.y + t_e * ray_direction.y;
+  float e_z = ray_origin.z + t_e * ray_direction.z;
+  if (launch_index.x + launch_index.y < DBG_RAY) {
+    printf("ray (%i, %i) CH\n"
+        "entry point: %f, %f, %f\n"
+        "exit point: %f, %f, %f\n",
+        launch_index.x, launch_index.y,
+        s_x, s_y, s_z,
+        e_x, e_y, e_z);
+  }
   float3 end = make_float3(e_x, e_y, e_z);
 
-  // get the optixAabb that we currenty intersected with
-  uint primitiveIndex = optixGetPrimitiveIndex();
 
   // store the entry and exit points of this ray in this AABB in param buffers
   // entry_points is an array with dimension [H, W, numPrimitives]
   // exit_points is an array with dimension [H, W, numPrimitives]
-  unsigned int idx = primitiveIndex + launch_index.x * params.num_primitives +
-                     launch_index.y * params.num_primitives * params.width;
+  unsigned int ray_idx = launch_index.x + launch_index.y * params.width;
+  unsigned int idx = primitiveIndex + ray_idx * params.num_primitives;
   params.start_points[idx] = start;
   params.end_points[idx] = end;
 
   // update the number of intersections for this ray
-  unsigned int idx2 = launch_index.x + launch_index.y * params.width;
-  params.num_hits[idx2] += 1;
+  params.num_hits[ray_idx] += 1;
 
   // relaunch a ray from the exit point of the current AABB
   // this ray will be used to find the next AABB that the ray intersects with
   // the ray will be launched in the same direction as the original ray
-  OptixVisibilityMask visibilityMask = 255;
-  unsigned int rayFlags = OPTIX_RAY_FLAG_NONE;
-  unsigned int SBToffset = 0;
-  unsigned int SBTstride = 0;
-  unsigned int missSBTIndex = 0;
-  unsigned int payload = 0;
-  optixTrace(params.handle, end, ray_direction, 0, 100, 0,
-             visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
-             payload);
+  //OptixVisibilityMask visibilityMask = 255;
+  //unsigned int rayFlags = OPTIX_RAY_FLAG_NONE;
+  //unsigned int SBToffset = 0;
+  //unsigned int SBTstride = 0;
+  //unsigned int missSBTIndex = 0;
+  //unsigned int payload = 0;
+  //optixTrace(params.handle, end, ray_direction, 0, 100, 0,
+  //           visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
+  //           payload);
 }
 
 extern "C" __global__ void __raygen__ray_sample() {

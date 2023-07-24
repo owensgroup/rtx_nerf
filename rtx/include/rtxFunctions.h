@@ -86,7 +86,7 @@ struct RTXDataHolder {
   void createProgramGroups();
   void linkPipeline(bool debug);
   void buildSBT();
-  void initAccelerationStructure(const std::vector<OptixAabb> &grid);
+  OptixAabb* initAccelerationStructure(const std::vector<OptixAabb> &grid);
   
   OptixAabb buildAccelerationStructure(const std::string obj_filename,
                                        std::vector<float3> &vertices,
