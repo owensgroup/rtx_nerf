@@ -86,7 +86,8 @@ std::vector<OptixAabb> make_grid(int resolution) {
                 aabb.minZ = -1.0f + z * box_length;
                 aabb.maxZ = -1.0f + z * box_length + box_length;
                 grid.push_back(aabb);
-                std::printf("aabb (%.2f %.2f %.2f) (%.2f %.2f %.2f)\n", aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ);
+                //std::printf("aabb (%.2f %.2f %.2f) (%.2f %.2f %.2f)\n",
+                //        aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ);
             }
         }
     }
@@ -100,6 +101,17 @@ std::vector<OptixAabb> make_grid(int resolution) {
 
 RTXDataHolder *rtx_dataholder;
 
+__global__ void print_intersections(float3* start, float3* end, int* num_hits, int num_prim) {
+    printf("Intersections\n");
+    for (int i = 0; i < 10; ++i) {
+        printf("ray (%i): %i hits\n", i, num_hits[i]); // origin = (%.2f, %.2f, %.2f)\n  ",
+        for (int j = 0; j < num_hits[i]; ++j) {
+            float3 s = start[i*num_prim + j];
+            float3 e = end[i*num_prim + j];
+            printf("   (%.2f %.2f %.2f) (%.2f %.2f %.2f)\n", s.x, s.y, s.z, e.x, e.y, e.z);
+        }
+    }
+}
 
 
 
@@ -140,7 +152,7 @@ int main() {
     rtx_dataholder->buildSBT();
     
     // Build our initial dense acceleration structure
-    int grid_resolution = 2;
+    int grid_resolution = 8;
     std::cout << "Building Acceleration Structure \n";
     std::vector<OptixAabb> grid = make_grid(grid_resolution);
     int num_primitives = grid.size();
@@ -216,6 +228,10 @@ int main() {
             d_start_points = params.start_points;
             d_end_points = params.end_points;
             d_num_hits = params.num_hits;
+
+            print_intersections<<<1,1>>>(d_start_points, d_end_points, d_num_hits, num_primitives);
+            CUDA_CHECK(cudaDeviceSynchronize());
+
             std::cout << "Launching Sampling Kernel \n";
             // tcnn inference on point buffer from sampling kernels
             

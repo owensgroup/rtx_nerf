@@ -53,7 +53,7 @@ void RTXDataHolder::initContext() {
   OPTIX_CHECK(optixInit());
   OptixDeviceContextOptions options = {};
   options.logCallbackFunction = &optixLogCallback;
-  options.logCallbackLevel = 4; // This goes upto level 4
+  options.logCallbackLevel = 3; // This goes upto level 4
   OPTIX_CHECK(optixDeviceContextCreate(0, &options, &optix_context));
 }
 
@@ -72,15 +72,15 @@ void RTXDataHolder::createModule(const std::string ptx_filename) {
   OptixModuleCompileOptions module_compile_options = {};
   module_compile_options.maxRegisterCount =
       OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-  //module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3;
-  //module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
-  module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-  module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3;
+  module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+  //module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+  //module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 
   pipeline_compile_options.usesMotionBlur = 0;
   pipeline_compile_options.traversableGraphFlags =
       OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-  pipeline_compile_options.numPayloadValues = 1;
+  pipeline_compile_options.numPayloadValues = 4;
   pipeline_compile_options.numAttributeValues = 2;
   pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
   pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
