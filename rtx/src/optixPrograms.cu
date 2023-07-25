@@ -78,12 +78,12 @@ extern "C" __global__ void __raygen__ray_march() {
     xo = __uint_as_float(o_x); 
     yo = __uint_as_float(o_y);
     zo = __uint_as_float(o_z);
-    //if (ray_idx == DBG_RAY) {
-    //  printf("Tracing ray (%d, %d)\n"
-    //      "ray origin: %f, %f, %f\n",
-    //      launch_index.x, launch_index.y,
-    //      xo, yo, zo);
-    //}
+    if (ray_idx == DBG_RAY) {
+      printf("Tracing ray (%d, %d)\n"
+          "ray origin: %f, %f, %f\n",
+          launch_index.x, launch_index.y,
+          xo, yo, zo);
+    }
     ray_origin = make_float3(xo, yo, zo);
     optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
                visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
@@ -112,22 +112,33 @@ extern "C" __global__ void __intersection__ray_march() {
   float3 ray_direction = optixGetWorldRayDirection();
   uint primitiveIndex = optixGetPrimitiveIndex();
 
-  OptixAabb aabb = params.aabb[primitiveIndex];
-  float plane_x = ray_direction.x > 0 ? aabb.minX : aabb.maxX;
-  float plane_y = ray_direction.y > 0 ? aabb.minY : aabb.maxY;
-  float plane_z = ray_direction.z > 0 ? aabb.minZ : aabb.maxZ;
-  float t_x = (plane_x - ray_origen.x) / ray_direction.x;
-  float t_y = (plane_y - ray_origen.y) / ray_direction.y;
-  float t_z = (plane_z - ray_origen.z) / ray_direction.z;
-  float t = min(min(t_x, t_y), t_z);
+  OptixAabb b = params.aabb[primitiveIndex];
+  float tmin = -INFINITY;
+  float tmax = INFINITY;
+
+  float tx1 = (b.minX - ray_origen.x) / ray_direction.x;
+  float tx2 = (b.maxX - ray_origen.x) / ray_direction.x;
+  tmin = max(tmin, min(tx1, tx2));
+  tmax = min(tmax, max(tx1, tx2));
+
+  float ty1 = (b.minY - ray_origen.y) / ray_direction.y;
+  float ty2 = (b.maxY - ray_origen.y) / ray_direction.y;
+  tmin = max(tmin, min(ty1, ty2));
+  tmax = min(tmax, max(ty1, ty2));
+
+  float tz1 = (b.minZ - ray_origen.z) / ray_direction.z;
+  float tz2 = (b.maxZ - ray_origen.z) / ray_direction.z;
+  tmin = max(tmin, min(tz1, tz2));
+  tmax = min(tmax, max(tz1, tz2));
+
   //if (ray_idx ==  DBG_RAY) {
   //  printf("ray (%i, %i) IS\n"
-  //      "   t %f\n",
-  //      launch_index.x, launch_index.y, t);
+  //      "   tmin %f,  tmax %f\n",
+  //      launch_index.x, launch_index.y, tmin, tmax);
   //}
 
-  if (t >= 0)
-    optixReportIntersection(t, 0);
+  if (tmax > tmin)
+    optixReportIntersection(tmin, 0);
 }
 
 extern "C" __global__ void __miss__ray_march() {
