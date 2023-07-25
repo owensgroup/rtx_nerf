@@ -121,7 +121,7 @@ extern "C" __global__ void __closesthit__ray_march() {
   // update the number of intersections for this ray
   unsigned int idx2 = launch_index.x + launch_index.y * params.width;
   params.num_hits[idx2] += 1;
-
+  //params.total_num_hits += 1;
   // relaunch a ray from the exit point of the current AABB
   // this ray will be used to find the next AABB that the ray intersects with
   // the ray will be launched in the same direction as the original ray

@@ -39,7 +39,8 @@ include_directories(${JSON_INC_PATH}
                     ${CMAKE_SOURCE_DIR}/loader
                     ${CMAKE_SOURCE_DIR}/rtx/include
                     ${CMAKE_SOURCE_DIR}/common/
-		    ${OptiX7_INCLUDE_DIRS}
+                    ${CMAKE_SOURCE_DIR}/sampler
+		                ${OptiX7_INCLUDE_DIRS}
                     ${CMAKE_BINARY_DIR}
                     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                     ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/include
@@ -52,6 +53,7 @@ set(SOURCES
     main.cu
     rtx/src/rtxFunctions.cpp
     loader/data_loader.cpp
+    sampler/sampler.cpp
     common/common.cpp
 )
 

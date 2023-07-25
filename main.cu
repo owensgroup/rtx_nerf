@@ -5,7 +5,7 @@
 #include <fstream>
 
 #include "stdio.h"
-
+#include "sampler.h"
 
 #include "optix_function_table_definition.h"
 #include "optix_stubs.h"
@@ -69,6 +69,40 @@ __global__ void print_batch(float* batch, int batch_size, int image_size) {
     //     printf("\n");
     // }
 }
+
+__global__ void gatherIntersections(
+    float3* d_start_points, 
+    float3* d_end_points, 
+    int* d_num_hits, 
+    float3* d_intersect_start,
+    float3* d_intersect_end,
+    int width, int height, int grid_size)
+{
+    // Calculate the index of the pixel this thread should process.
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < width && y < height)
+    {
+        // Calculate the base index for this pixel in the d_start_points and d_end_points arrays.
+        int base_index = (y * width + x) * grid_size;
+
+        // Find the number of grid cells hit by the ray from this pixel.
+        int num_hits = d_num_hits[y * width + x];
+
+        // For each hit, gather the entry and exit points.
+        for (int i = 0; i < num_hits; ++i)
+        {
+            float3 start_point = d_start_points[base_index + i];
+            float3 end_point = d_end_points[base_index + i];
+
+            // Store the intersection points.
+            d_intersect_start[2 * (base_index + i)] = start_point;
+            d_intersect_end[2 * (base_index + i)] = end_point;
+        }
+    }
+}
+ 
 // Creates a grid of Axis-aligned bounding boxes with specified resolution
 // Bounding box coordinates are specified in normalized coordinates from -1 to 1
 // TODO: make this a CUDA kernel
@@ -98,9 +132,6 @@ std::vector<OptixAabb> make_grid(int resolution) {
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
-
-
-
 
 int main() {
     // load data from files
@@ -201,7 +232,7 @@ int main() {
             params.end_points = d_end_points;
             params.num_hits = d_num_hits;
             params.num_primitives = num_primitives;
-            
+            // params.total_num_hits = 0;
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
             std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
@@ -214,7 +245,33 @@ int main() {
             d_start_points = params.start_points;
             d_end_points = params.end_points;
             d_num_hits = params.num_hits;
+            // int total_num_hits = params.total_num_hits;
+            // std::cout << "Total Number of Hits: " << total_num_hits << std::endl;
+            // float3* d_intersect_start;
+            // float3* d_intersect_end;
+            // CUDA_CHECK(cudaMalloc((void **)&d_intersect_start, total_num_hits * sizeof(float3)));
+            // CUDA_CHECK(cudaMalloc((void **)&d_intersect_end, total_num_hits * sizeof(float3)));
+
+            // dim3 threadsPerBlock(16, 16);
+            // dim3 numBlocks((width + threadsPerBlock.x - 1) / threadsPerBlock.x,
+            //                 (height + threadsPerBlock.y - 1) / threadsPerBlock.y);
+            // gatherIntersections<<<numBlocks, threadsPerBlock>>>(
+            //     d_start_points, d_end_points,
+            //     d_num_hits, d_intersect_start, d_intersect_end, 
+            //     width, height, num_primitives);
+            // gather entry and exit points
+
+
+            int samples_per_intersect = 32;
             std::cout << "Launching Sampling Kernel \n";
+            launchUniformSampler(
+                d_start_points,
+                d_end_points,
+                d_num_hits,
+                samples_per_intersect,
+                width, height,
+                num_primitives, 
+                stream);
             // tcnn inference on point buffer from sampling kernels
             
             // Optix Launch Volume Rendering kernel
