@@ -49,6 +49,9 @@ nlohmann::json config = {
 		{"n_hidden_layers", 2},
 	}},
 };
+
+
+
 __global__ void printFloats(float* gpuPointer, int size)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -264,14 +267,20 @@ int main() {
 
             int samples_per_intersect = 32;
             std::cout << "Launching Sampling Kernel \n";
+            //each point stores a location xyz and a viewing direction phi and psi
+            float5* d_sampled_points;
+            int num_points;
+            CUDA_CHECK(cudaMalloc((void **)&d_sampled_points, width * height * num_primitives * samples_per_intersect * sizeof(float5)));
             launchUniformSampler(
                 d_start_points,
                 d_end_points,
                 d_num_hits,
+                d_sampled_points,
                 samples_per_intersect,
                 width, height,
                 num_primitives, 
-                stream);
+                stream,
+                num_points);
             // tcnn inference on point buffer from sampling kernels
             
             // Optix Launch Volume Rendering kernel
