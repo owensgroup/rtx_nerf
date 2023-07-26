@@ -59,7 +59,11 @@ extern "C" __global__ void __raygen__ray_march() {
   xd = look_at[0] * u + look_at[1] * v + look_at[2] * -1.0f * params.focal_length;
   yd = look_at[4] * u + look_at[5] * v + look_at[6] * -1.0f * params.focal_length;
   zd = look_at[8] * u + look_at[9] * v + look_at[10] * -1.0f * params.focal_length;
-  
+  // normalize ray direction
+  float norm = sqrt(xd * xd + yd * yd + zd * zd);
+  xd /= norm;
+  yd /= norm;
+  zd /= norm;
   float3 ray_direction = make_float3(xd, yd, zd);
   float3 ray_origin = make_float3(look_at[3], look_at[7], look_at[11]);
   float xo = ray_origin.x;
