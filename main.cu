@@ -5,7 +5,7 @@
 #include <fstream>
 #include <math.h>
 #include "stdio.h"
-
+#include "sampler.h"
 
 #include "optix_function_table_definition.h"
 #include "optix_stubs.h"
@@ -49,6 +49,9 @@ nlohmann::json config = {
 		{"n_hidden_layers", 2},
 	}},
 };
+
+
+
 __global__ void printFloats(float* gpuPointer, int size)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -69,6 +72,40 @@ __global__ void print_batch(float* batch, int batch_size, int image_size) {
     //     printf("\n");
     // }
 }
+
+__global__ void gatherIntersections(
+    float3* d_start_points, 
+    float3* d_end_points, 
+    int* d_num_hits, 
+    float3* d_intersect_start,
+    float3* d_intersect_end,
+    int width, int height, int grid_size)
+{
+    // Calculate the index of the pixel this thread should process.
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < width && y < height)
+    {
+        // Calculate the base index for this pixel in the d_start_points and d_end_points arrays.
+        int base_index = (y * width + x) * grid_size;
+
+        // Find the number of grid cells hit by the ray from this pixel.
+        int num_hits = d_num_hits[y * width + x];
+
+        // For each hit, gather the entry and exit points.
+        for (int i = 0; i < num_hits; ++i)
+        {
+            float3 start_point = d_start_points[base_index + i];
+            float3 end_point = d_end_points[base_index + i];
+
+            // Store the intersection points.
+            d_intersect_start[2 * (base_index + i)] = start_point;
+            d_intersect_end[2 * (base_index + i)] = end_point;
+        }
+    }
+}
+ 
 // Creates a grid of Axis-aligned bounding boxes with specified resolution
 // Bounding box coordinates are specified in normalized coordinates from -1 to 1
 // TODO: make this a CUDA kernel
@@ -138,8 +175,10 @@ int main() {
     // We also build our initial dense acceleration structure of AABBs
 
     std::cout << "---------------------- Initializing Optix ----------------------\n";
-    cudaStream_t stream;
-    CUDA_CHECK(cudaStreamCreate(&stream));
+    cudaStream_t inference;
+    cudaStream_t training;
+    CUDA_CHECK(cudaStreamCreate(&inference));
+    CUDA_CHECK(cudaStreamCreate(&training));
     std::string ptx_filename = BUILD_DIR "bin/ptx/optixPrograms.ptx";
 
     rtx_dataholder = new RTXDataHolder();
@@ -195,8 +234,8 @@ int main() {
             float* look_at = training_poses[i];
 
             // transfer image and look_at to GPU
-            CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, stream));
-            CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, stream));
+            CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, inference));
+            CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, inference));
 
             // Memset ray intersection buffers
             CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * num_primitives * sizeof(float3)));
@@ -225,10 +264,10 @@ int main() {
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
             std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
-            OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, stream,
+            OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, inference,
                                     reinterpret_cast<CUdeviceptr>(d_param),
                                     sizeof(Params), &sbt_ray_march, width, height, 1));
-            CUDA_CHECK(cudaStreamSynchronize(stream));
+            CUDA_CHECK(cudaStreamSynchronize(inference));
 
             // CUDA Launch Sampling Kernel given entry and exit points from this perspective
             d_start_points = params.start_points;
@@ -239,6 +278,20 @@ int main() {
             CUDA_CHECK(cudaDeviceSynchronize());
 
             std::cout << "Launching Sampling Kernel \n";
+            //each point stores a location xyz and a viewing direction phi and psi
+            float5* d_sampled_points;
+            int num_points;
+            CUDA_CHECK(cudaMalloc((void **)&d_sampled_points, width * height * num_primitives * samples_per_intersect * sizeof(float5)));
+            launchUniformSampler(
+                d_start_points,
+                d_end_points,
+                d_num_hits,
+                d_sampled_points,
+                samples_per_intersect,
+                width, height,
+                num_primitives, 
+                inference,
+                num_points);
             // tcnn inference on point buffer from sampling kernels
             
             // Optix Launch Volume Rendering kernel
