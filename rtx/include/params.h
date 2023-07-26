@@ -25,12 +25,8 @@ struct Params {
     // store the number of intersections with AABBs per ray (<= num_primitives per ray)
     // we'll use this to gather the intersections for each ray
     int* num_hits;
-<<<<<<< HEAD
     float focal_length;
     float aspect_ratio;
-=======
-    //int total_num_hits; // total number of intersections
->>>>>>> efdef99cca2db5b6fd0942a9bd3b54e4394a5a46
     float3 delta;
     float3 min_point;
     float3 max_point;
