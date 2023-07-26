@@ -5,7 +5,31 @@
 #include <fstream>
 #include <cmath>
 
+class ProgressBar {
+    const int barWidth = 70;
 
+public:
+    void update(double progress) {
+        std::cout << "\n";  // Reset to the start of the line
+        
+        // Print the loading message
+        std::cout << "Loading image [" + std::to_string(int(progress * 100.0)) + "/100]" + "\n";
+
+        // Print the progress bar
+        std::cout << "[";
+        int position = barWidth * progress;
+        for (int i = 0; i < barWidth; ++i) {
+            if (i < position) std::cout << "=";
+            else if (i == position) std::cout << ">";
+            else std::cout << " ";
+        }
+        std::cout << "] " << int(progress * 100.0) << " %";
+        std::cout.flush();
+
+        // Move the cursor up 2 lines for the next update
+        std::cout << "\033[2A";  // ANSI escape code to move up 2 lines
+    }
+};
 
 ImageDataset load_images_json(std::string basename, std::string s) {
     std::ifstream file(basename + "/transforms_" + s + ".json");
@@ -17,17 +41,22 @@ ImageDataset load_images_json(std::string basename, std::string s) {
     std::vector<float*> images;
     std::vector<float*> poses;
 
+    std::cout << "Loading JSON..." << std::endl;
     Json::Value root;
     file >> root;
     float camera_angle_x = root["camera_angle_x"].asFloat();
     //std::cout << "Camera Angle X: " << camera_angle_x << std::endl;
     int width, height, channels_in_file;
     const Json::Value frames = root["frames"];
+    ProgressBar bar;
+    double i = 0;
+    std::cout << "Loading images..." << std::endl;
     for (const auto& frame : frames) {
         std::string file_path = frame["file_path"].asString();
         float rotation = frame["rotation"].asFloat();
         const Json::Value transform_matrix = frame["transform_matrix"];
-
+        bar.update(i);
+        i += .01;
         // std::cout << "File Path: " << file_path << std::endl;
         // std::cout << "Rotation: " << rotation << std::endl;
 
@@ -58,7 +87,7 @@ ImageDataset load_images_json(std::string basename, std::string s) {
         images.push_back(image);
         poses.push_back(pose);
     }
-
+    std::cout << "\033[2B" << std::endl;
     float focal = .5 * 800 / std::tan(.5 * camera_angle_x);
     ImageDataset dataset;
     dataset.images = images;
