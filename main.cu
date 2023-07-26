@@ -3,7 +3,7 @@
 #include <vector>
 #include <cstdio>
 #include <fstream>
-
+#include <math.h>
 #include "stdio.h"
 
 
@@ -126,6 +126,9 @@ int main() {
     unsigned int width = train_set.image_width;
     unsigned int height = train_set.image_height;
     unsigned int channels = train_set.image_channels;
+    float training_focal = train_set.focal;
+    float aspect_ratio = (float)width / (float)height;
+    float focal_length = 1.0f / tan(0.5f * training_focal);
     size_t image_size = width * height * channels;
     // get training dataset from datasets
     std::vector<float*> training_images = datasets[0].images;
@@ -209,12 +212,15 @@ int main() {
             params.max_point = make_float3(1, 1, 1);
             params.width = width;
             params.height = height;
+            params.focal_length = focal_length;
+            params.aspect_ratio = aspect_ratio;
             params.handle = rtx_dataholder->gas_handle;
             params.aabb = d_aabb;
             params.start_points = d_start_points;
             params.end_points = d_end_points;
             params.num_hits = d_num_hits;
             params.num_primitives = num_primitives;
+
             
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;

@@ -49,14 +49,22 @@ extern "C" __global__ void __raygen__ray_march() {
   // look_at is the 4x4 transform matrix
   float* look_at = params.look_at;
 
-  float xo = min_point.x + delta.x * launch_index.x + (delta.x / 2);
-  float yo = min_point.y + delta.y * launch_index.y + (delta.y / 2);
-  float zo = min_point.z;
-   
+  
+  float u = (2 * (launch_index.x + 0.5) / params.width - 1) * params.aspect_ratio;
+  float v = (2 * (launch_index.y + 0.5) / params.height - 1);
+  
+  float xd, yd, zd;
 
-  float3 ray_direction = make_float3(0.0, 0.0, 1.0);
-  float3 ray_origin;
-
+  
+  xd = look_at[0] * u + look_at[1] * v + look_at[2] * -1.0f * params.focal_length;
+  yd = look_at[4] * u + look_at[5] * v + look_at[6] * -1.0f * params.focal_length;
+  zd = look_at[8] * u + look_at[9] * v + look_at[10] * -1.0f * params.focal_length;
+  
+  float3 ray_direction = make_float3(xd, yd, zd);
+  float3 ray_origin = make_float3(look_at[3], look_at[7], look_at[11]);
+  float xo = ray_origin.x;
+  float yo = ray_origin.y;
+  float zo = ray_origin.z;
   float tmin = 0.0f;
   float tmax = (max_point.z - min_point.z) + 100.0;
   float ray_time = 0.0f;
