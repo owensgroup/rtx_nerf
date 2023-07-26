@@ -156,8 +156,10 @@ int main() {
     // We also build our initial dense acceleration structure of AABBs
 
     std::cout << "---------------------- Initializing Optix ----------------------\n";
-    cudaStream_t stream;
-    CUDA_CHECK(cudaStreamCreate(&stream));
+    cudaStream_t inference;
+    cudaStream_t training;
+    CUDA_CHECK(cudaStreamCreate(&inference));
+    CUDA_CHECK(cudaStreamCreate(&training));
     std::string ptx_filename = BUILD_DIR "bin/ptx/optixPrograms.ptx";
 
     rtx_dataholder = new RTXDataHolder();
@@ -213,8 +215,8 @@ int main() {
             float* look_at = training_poses[i];
 
             // transfer image and look_at to GPU
-            CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, stream));
-            CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, stream));
+            CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, inference));
+            CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, inference));
 
             // Memset ray intersection buffers
             CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * num_primitives * sizeof(float3)));
@@ -239,10 +241,10 @@ int main() {
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
             std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
-            OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, stream,
+            OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, inference,
                                     reinterpret_cast<CUdeviceptr>(d_param),
                                     sizeof(Params), &sbt_ray_march, width, height, 1));
-            CUDA_CHECK(cudaStreamSynchronize(stream));
+            CUDA_CHECK(cudaStreamSynchronize(inference));
 
             // CUDA Launch Sampling Kernel given entry and exit points from this perspective
             d_start_points = params.start_points;
@@ -279,7 +281,7 @@ int main() {
                 samples_per_intersect,
                 width, height,
                 num_primitives, 
-                stream,
+                inference,
                 num_points);
             // tcnn inference on point buffer from sampling kernels
             
