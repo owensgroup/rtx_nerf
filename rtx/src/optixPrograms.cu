@@ -302,3 +302,53 @@ extern "C" __global__ void __closesthit__ray_sample() {
   // atomicAdd(output + idx,
   //           0.2f); // can be the scalar value associated with a triangle.
 }
+
+// A CUDA kernel which given a list of samples per ray and the t-values and densities
+// at those sample points, computes a volume rendering of the given rays using those
+// samples.
+//
+// INPUT -- LENGTH
+// NUM_RAYS -- numBlocks * threadsPerBlock
+// NUM_SAMPLES_PER_RAY -- 32
+// COLORS -- NUM_RAYS * NUM_SAMPLES_PER_RAY
+// T_SAMPLES -- NUM_RAYS * NUM_SAMPLES_PER_RAY
+// DENSITIES -- NUM_RAYS * NUM_SAMPLES_PER_RAY
+//
+// OUTPUT -- SIZE
+// PIXELS -- NUM_RAYS
+//
+//
+#define NUM_SAMPLES_PER_RAY 32
+extern "C" __global__ void volrender_cuda(float3* colors, float* t_samples,
+                                          float* densities,
+                                          float3* pixels) {
+    int global_thread_idx = threadIdx.x + blockIdx.x * blockDim.x;
+
+    float transmittance = 0.0f;
+    float t_initial = 0.0f;
+    float3 accum_color;
+    accum_color.x = 0.0f;
+    accum_color.y = 0.0f;
+    accum_color.z = 0.0f;
+    #pragma unroll
+    for (int i = 0; i < NUM_SAMPLES_PER_RAY; i++) {
+        float3 color = colors[global_thread_idx * i + i];
+        float sigma = densities[global_thread_idx * i + i];
+
+        float t_final = t_samples[global_thread_idx * i + i];
+        float delta = t_final - t_initial;
+        t_initial = t_final;
+
+        transmittance += delta * sigma;
+
+        color.x = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.x;
+        color.y = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.y;
+        color.z = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.z;
+
+        accum_color.x += color.x;
+        accum_color.y += color.y;
+        accum_color.z += color.z;
+    }
+
+    pixels[global_thread_idx] = accum_color;
+}
