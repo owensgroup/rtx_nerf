@@ -33,7 +33,8 @@
 #include "params.h"
 #include <optix.h>
 
-#define DBG_RAY 2
+//#define DBG_RAY (26*params.width + 50)
+#define DBG_RAY 1
 
 extern "C" static __constant__ Params params;
 
@@ -66,9 +67,9 @@ extern "C" __global__ void __raygen__ray_march() {
   zd /= norm;
   float3 ray_direction = make_float3(xd, yd, zd);
   float3 ray_origin = make_float3(look_at[3], look_at[7], look_at[11]);
-  float xo = ray_origin.x;
-  float yo = ray_origin.y;
-  float zo = ray_origin.z;
+  float xo = ray_origin.x / 10;
+  float yo = ray_origin.y / 10;
+  float zo = ray_origin.z / 10;
   float tmin = 0.0f;
   float tmax = (max_point.z - min_point.z) + 100.0;
   float ray_time = 0.0f;
@@ -86,16 +87,20 @@ extern "C" __global__ void __raygen__ray_march() {
   unsigned int o_y = __float_as_uint(yo);
   unsigned int o_z = __float_as_uint(zo);
 
+
+
   while (hit) {
     xo = __uint_as_float(o_x); 
     yo = __uint_as_float(o_y);
     zo = __uint_as_float(o_z);
-    if (ray_idx == DBG_RAY) {
-      printf("Tracing ray (%d, %d)\n"
-          "ray origin: %f, %f, %f\n",
-          launch_index.x, launch_index.y,
-          xo, yo, zo);
-    }
+    //if (ray_idx == DBG_RAY) {
+    //  printf("Tracing ray (%d, %d)\n"
+    //      " ray origin: %f, %f, %f\n"
+    //      " ray dir: %f, %f, %f\n",
+    //      launch_index.x, launch_index.y,
+    //      xo, yo, zo,
+    //      xd, yd, zd);
+    //}
     ray_origin = make_float3(xo, yo, zo);
     optixTrace(params.handle, ray_origin, ray_direction, tmin, tmax, ray_time,
                visibilityMask, rayFlags, SBToffset, SBTstride, missSBTIndex,
@@ -111,10 +116,10 @@ extern "C" __global__ void __anyhit__ray_march() {
   //val += 0.2; // can be the scalar value associated with a triangle.
   //optixSetPayload_0(__float_as_uint(val));
   //optixIgnoreIntersection();
-  if (ray_idx ==  DBG_RAY) {
-    float t = optixGetRayTmax();
-    printf("ray (%i, %i) AH  t %f\n", launch_index.x, launch_index.y, t);
-  }
+  //if (ray_idx ==  DBG_RAY) {
+  //  float t = optixGetRayTmax();
+  //  printf("ray (%i, %i) AH  t %f\n", launch_index.x, launch_index.y, t);
+  //}
 }
 
 extern "C" __global__ void __intersection__ray_march() {
@@ -149,8 +154,11 @@ extern "C" __global__ void __intersection__ray_march() {
   //      launch_index.x, launch_index.y, tmin, tmax);
   //}
 
-  if (tmax > tmin)
+  if (tmax > tmin) {
+    if (tmin < 0 && tmax > 1e-6)
+      tmin = 0;
     optixReportIntersection(tmin, 0);
+  }
 }
 
 extern "C" __global__ void __miss__ray_march() {
@@ -185,9 +193,9 @@ extern "C" __global__ void __closesthit__ray_march() {
   float plane_x = ray_direction.x < 0 ? aabb.minX : aabb.maxX;
   float plane_y = ray_direction.y < 0 ? aabb.minY : aabb.maxY;
   float plane_z = ray_direction.z < 0 ? aabb.minZ : aabb.maxZ;
-  float t_x = (plane_x - s_x) / ray_direction.x;
-  float t_y = (plane_y - s_y) / ray_direction.y;
-  float t_z = (plane_z - s_z) / ray_direction.z;
+  float t_x = (plane_x - ray_origin.x) / ray_direction.x;
+  float t_y = (plane_y - ray_origin.y) / ray_direction.y;
+  float t_z = (plane_z - ray_origin.z) / ray_direction.z;
   float t_e = min(min(t_x, t_y), t_z);
 
   float e_x = ray_origin.x + t_e * ray_direction.x;
@@ -199,13 +207,15 @@ extern "C" __global__ void __closesthit__ray_march() {
   //      "  entry point: %f, %f, %f\n"
   //      "  exit point: %f, %f, %f\n"
   //      "  p_x %f   p_y %f   p_z %f\n"
-  //      "  t: %f   %f   %f\n",
+  //      "  t: %f   %f   %f\n"
+  //      "  num_hits: %i\n",
   //      launch_index.x, launch_index.y,
   //      t_hit,
   //      s_x, s_y, s_z,
   //      e_x, e_y, e_z,
   //      plane_x, plane_y, plane_z,
-  //      t_x, t_y, t_z);
+  //      t_x, t_y, t_z,
+  //      params.num_hits[ray_idx]);
   //}
   float3 end = make_float3(e_x, e_y, e_z);
 

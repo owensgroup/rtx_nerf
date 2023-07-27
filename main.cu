@@ -259,11 +259,12 @@ int main() {
             params.end_points = d_end_points;
             params.num_hits = d_num_hits;
             params.num_primitives = num_primitives;
+            params.look_at = d_look_at;
 
             
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
-            std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
+            std::cout << "Launching Ray Tracer in Ray Marching Mode (" << width*height << " rays)\n";
             OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, inference,
                                     reinterpret_cast<CUdeviceptr>(d_param),
                                     sizeof(Params), &sbt_ray_march, width, height, 1));
@@ -280,6 +281,7 @@ int main() {
             std::cout << "Launching Sampling Kernel \n";
             //each point stores a location xyz and a viewing direction phi and psi
             float5* d_sampled_points;
+            int samples_per_intersect = 2;
             int num_points;
             CUDA_CHECK(cudaMalloc((void **)&d_sampled_points, width * height * num_primitives * samples_per_intersect * sizeof(float5)));
             launchUniformSampler(
