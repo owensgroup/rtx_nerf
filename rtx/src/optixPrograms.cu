@@ -33,6 +33,8 @@
 #include "params.h"
 #include <optix.h>
 
+#include <thrust/random.h>
+
 //#define DBG_RAY (26*params.width + 50)
 #define DBG_RAY 1
 
@@ -303,6 +305,69 @@ extern "C" __global__ void __closesthit__ray_sample() {
   //           0.2f); // can be the scalar value associated with a triangle.
 }
 
+// Samples are returned from 0.0 to 1.0, where 0.0 is the same as start_points[0] and
+// 1.0 is the same as the last end_point
+
+
+#define NUM_SAMPLES_PER_SEGMENT 32
+enum SAMPLING_TYPE {
+    SAMPLING_REGULAR,
+    SAMPLING_STRATIFIED_JITTERING,
+    SAMPLING_UNIFORM,
+};
+extern "C" __global__ void generate_samples(float3* start_points, float3* end_points,
+                                            int num_segments,
+                                            SAMPLING_TYPE sample_type,
+                                            float3* samples,
+                                            thrust::minstd_rand rng) 
+{
+    // Get index of this segment
+    int global_thread_idx = threadIdx.x + blockDim.x * blockIdx.x;
+    
+    float3 origin = start_points[global_thread_idx];
+    float3 finish = end_points[global_thread_idx];
+    float3 direction;
+    direction.x = finish.x - origin.x;
+    direction.y = finish.y - origin.y;
+    direction.z = finish.z - origin.z;
+    
+    float t_initial = 0.0f;
+    float t_final = 1.0f / NUM_SAMPLES_PER_SEGMENT;
+    #pragma unroll
+    for (int i = 0; i < NUM_SAMPLES_PER_SEGMENT; i++) {
+        if (sample_type == SAMPLING_REGULAR) {
+            float t = t_initial;
+            float3 sample = origin;
+            sample.x = t * direction.x + origin.x;
+            sample.y = t * direction.y + origin.y;
+            sample.z = t * direction.z + origin.z;
+            samples[global_thread_idx * NUM_SAMPLES_PER_SEGMENT + i] = sample;
+            t_initial += 1.0f / NUM_SAMPLES_PER_SEGMENT;
+        } else if (sample_type == SAMPLING_UNIFORM) {
+            thrust::uniform_real_distribution<float> dist(0,1);
+            float t = dist(rng);
+
+            float3 sample = origin;
+            sample.x = t * direction.x + origin.x;
+            sample.y = t * direction.y + origin.y;
+            sample.z = t * direction.z + origin.z;
+            samples[global_thread_idx * NUM_SAMPLES_PER_SEGMENT +i] = sample;
+        } else if (sample_type == SAMPLING_STRATIFIED_JITTERING) {
+            thrust::uniform_real_distribution<float> dist(t_initial, t_final);
+            float t = dist(rng);
+
+            float3 sample = origin;
+            sample.x = t * direction.x + origin.x;
+            sample.y = t * direction.y + origin.y;
+            sample.z = t * direction.z + origin.z;
+            samples[global_thread_idx * NUM_SAMPLES_PER_SEGMENT +i] = sample;            
+ 
+            t_initial = t_final;
+            t_final += 1.0f / NUM_SAMPLES_PER_SEGMENT;
+        }
+    }
+}
+
 // A CUDA kernel which given a list of samples per ray and the t-values and densities
 // at those sample points, computes a volume rendering of the given rays using those
 // samples.
@@ -318,8 +383,8 @@ extern "C" __global__ void __closesthit__ray_sample() {
 // PIXELS -- NUM_RAYS
 //
 //
-#define NUM_SAMPLES_PER_RAY 32
 extern "C" __global__ void volrender_cuda(float3* colors, float* t_samples,
+                                          int num_samples_per_ray,
                                           float* densities,
                                           float3* pixels) {
     int global_thread_idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -331,7 +396,7 @@ extern "C" __global__ void volrender_cuda(float3* colors, float* t_samples,
     accum_color.y = 0.0f;
     accum_color.z = 0.0f;
     #pragma unroll
-    for (int i = 0; i < NUM_SAMPLES_PER_RAY; i++) {
+    for (int i = 0; i < num_samples_per_ray; i++) {
         float3 color = colors[global_thread_idx * i + i];
         float sigma = densities[global_thread_idx * i + i];
 
