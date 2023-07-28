@@ -27,6 +27,7 @@ struct Params {
     int* num_hits;
     float focal_length;
     float aspect_ratio;
+    //int total_num_hits; // total number of intersections
     float3 delta;
     float3 min_point;
     float3 max_point;
