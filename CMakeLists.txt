@@ -65,12 +65,12 @@ set_target_properties(optx_nerf PROPERTIES
 set_target_properties(optx_nerf PROPERTIES CUDA_ARCHITECTURES 70)
 #set_source_files_properties(test.cu PROPERTIES LANGUAGE CUDA)
 
-message("${OpenCV_LIBS}")
+add_subdirectory(lib/tiny-cuda-nn)
 # Link against the JsonCpp library
 target_link_libraries(optx_nerf jsoncpp_lib cuda ${OptiX_LIBRARY} 
             ${CUDA_LIBRARIES}
-            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/libtiny-cuda-nn.a
-            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/dependencies/fmt/libfmt.a
+            tiny-cuda-nn
+            fmt
             ${CMAKE_DL_LIBS})
 
 add_ptx_targets(optx_nerf optixPrograms)

@@ -281,10 +281,16 @@ int main() {
             std::cout << "Launching Sampling Kernel \n";
             //each point stores a location xyz and a viewing direction phi and psi
             float5* d_sampled_points;
-            int samples_per_intersect = 2;
             int num_points;
             int samples_per_intersect = 32;
-            CUDA_CHECK(cudaMalloc((void **)&d_sampled_points, width * height * num_primitives * samples_per_intersect * sizeof(float5)));
+            int h_num_hits = 0;
+
+            cudaMemcpy(&h_num_hits, d_num_hits, sizeof(int), cudaMemcpyDeviceToHost);
+            int size_samples = h_num_hits * samples_per_intersect * sizeof(float5);
+            printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_samples);
+
+            CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_samples));
+
             launchUniformSampler(
                 d_start_points,
                 d_end_points,
@@ -295,6 +301,7 @@ int main() {
                 num_primitives, 
                 inference,
                 num_points);
+
             // tcnn inference on point buffer from sampling kernels
             
             // Optix Launch Volume Rendering kernel
