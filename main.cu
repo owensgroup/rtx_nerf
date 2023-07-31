@@ -214,8 +214,8 @@ int main() {
     float3 *d_end_points;
     int *d_num_hits;
             
-    CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * num_primitives * sizeof(float3)));
-    CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * num_primitives * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * 3 * grid_resolution * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
     std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
 
@@ -238,8 +238,8 @@ int main() {
             CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, inference));
 
             // Memset ray intersection buffers
-            CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * num_primitives * sizeof(float3)));
-            CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * num_primitives * sizeof(float3)));
+            CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
+            CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
             CUDA_CHECK(cudaMemset(d_num_hits, 0, width * height * sizeof(int)));
 
             // Algorithmic parameters and data pointers used in GPU program
@@ -281,7 +281,6 @@ int main() {
             std::cout << "Launching Sampling Kernel \n";
             //each point stores a location xyz and a viewing direction phi and psi
             float5* d_sampled_points;
-            int samples_per_intersect = 2;
             int num_points;
             int samples_per_intersect = 32;
             CUDA_CHECK(cudaMalloc((void **)&d_sampled_points, width * height * num_primitives * samples_per_intersect * sizeof(float5)));
