@@ -225,7 +225,7 @@ extern "C" __global__ void __closesthit__ray_march() {
   // store the entry and exit points of this ray in this AABB in param buffers
   // entry_points is an array with dimension [H, W, numPrimitives]
   // exit_points is an array with dimension [H, W, numPrimitives]
-  unsigned int idx = params.num_hits[ray_idx] + ray_idx * params.num_primitives;
+  unsigned int idx = params.num_hits[ray_idx] + ray_idx * params.intersection_arr_size;
   params.start_points[idx] = start;
   params.end_points[idx] = end;
 

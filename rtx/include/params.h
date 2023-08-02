@@ -16,6 +16,7 @@ struct Params {
     OptixTraversableHandle handle;
     float* look_at; // 4x4 matrix
     int num_primitives;
+    int intersection_arr_size;
     OptixAabb *aabb;
     // start/end points is [W, H, num_boxes_in_grid]
     // W is width of the image

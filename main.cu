@@ -249,6 +249,7 @@ int main() {
             params.delta = make_float3(d, d, d);
             params.min_point = make_float3(-1, -1, -1);
             params.max_point = make_float3(1, 1, 1);
+            params.intersection_arr_size = 3 * grid_resolution;
             params.width = width;
             params.height = height;
             params.focal_length = focal_length;
@@ -275,7 +276,7 @@ int main() {
             d_end_points = params.end_points;
             d_num_hits = params.num_hits;
 
-            print_intersections<<<1,1>>>(d_start_points, d_end_points, d_num_hits, num_primitives);
+            print_intersections<<<1,1>>>(d_start_points, d_end_points, d_num_hits, 3 * grid_resolution);
             CUDA_CHECK(cudaDeviceSynchronize());
 
             std::cout << "Launching Sampling Kernel \n";
@@ -283,10 +284,17 @@ int main() {
             float5* d_sampled_points;
             int num_points;
             int samples_per_intersect = 32;
-            int h_num_hits = 0;
+            std::cout << "Finding number of points to sample \n";
+            int* h_num_hits = (int*)malloc(sizeof(int) * width * height);
 
-            cudaMemcpy(&h_num_hits, d_num_hits, sizeof(int), cudaMemcpyDeviceToHost);
-            int size_samples = h_num_hits * samples_per_intersect * sizeof(float5);
+            cudaMemcpy(h_num_hits, d_num_hits, sizeof(int) * width * height, cudaMemcpyDeviceToHost);
+            int num_hits = 0;
+            for (int i = 0; i < width * height; ++i) {
+                num_hits += h_num_hits[i];
+            }
+            printf("num_hits: %d\n", num_hits);
+            printf("sampled_points: %d\n", samples_per_intersect * num_hits);
+            int size_samples = num_hits * samples_per_intersect * sizeof(float5);
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_samples);
 
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_samples));
