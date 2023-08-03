@@ -53,7 +53,7 @@ set(SOURCES
     main.cu
     rtx/src/rtxFunctions.cpp
     loader/data_loader.cpp
-    sampler/sampler.cpp
+    sampler/sampler.cu
     common/common.cpp
 )
 

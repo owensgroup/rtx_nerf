@@ -1,6 +1,13 @@
 #include <cuda_runtime_api.h>
 #include <optix.h>
 
+#define NUM_SAMPLES_PER_SEGMENT 32
+enum SAMPLING_TYPE {
+    SAMPLING_REGULAR,
+    SAMPLING_STRATIFIED_JITTERING,
+    SAMPLING_UNIFORM,
+};
+
 struct float5 {
     float x;
     float y;

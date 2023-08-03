@@ -298,18 +298,8 @@ int main() {
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_samples);
 
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_samples));
-
-            launchUniformSampler(
-                d_start_points,
-                d_end_points,
-                d_num_hits,
-                d_sampled_points,
-                samples_per_intersect,
-                width, height,
-                num_primitives, 
-                inference,
-                num_points);
-
+            
+            
             // tcnn inference on point buffer from sampling kernels
             
             // Optix Launch Volume Rendering kernel
