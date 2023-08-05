@@ -4,6 +4,9 @@
 // 1.0 is the same as the last end_point
 
 
+// this should be launched with one thread per ray in an image
+// each thread will read from num_hits
+// each thread will compute samples for num_hits points
 
 __global__ void generate_samples(
     float3* start_points,
@@ -16,7 +19,6 @@ __global__ void generate_samples(
 {
     // Get index of this segment
     int global_thread_idx = threadIdx.x + blockDim.x * blockIdx.x;
-    
     float3 origin = start_points[global_thread_idx];
     float3 finish = end_points[global_thread_idx];
     float3 direction;

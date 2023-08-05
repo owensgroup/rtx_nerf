@@ -169,6 +169,7 @@ void RTXDataHolder::createProgramGroups() {
                                 &program_group_options, nullptr, nullptr,
                                 &hitgroup_prog_group_ray_sample));
   }
+  
 }
 
 void RTXDataHolder::linkPipeline(bool debug = false) {

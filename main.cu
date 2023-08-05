@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <fstream>
 #include <math.h>
+#include <thrust/device_vector.h>
+#include <thrust/device_ptr.h>
 #include "stdio.h"
 #include "sampler.h"
 
@@ -140,7 +142,7 @@ RTXDataHolder *rtx_dataholder;
 
 __global__ void print_intersections(float3* start, float3* end, int* num_hits, int num_prim) {
     printf("Intersections\n");
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 100; ++i) {
         printf("ray (%i): %i hits\n", i, num_hits[i]); // origin = (%.2f, %.2f, %.2f)\n  ",
         for (int j = 0; j < num_hits[i]; ++j) {
             float3 s = start[i*num_prim + j];
@@ -148,6 +150,17 @@ __global__ void print_intersections(float3* start, float3* end, int* num_hits, i
             printf("   (%.2f %.2f %.2f) (%.2f %.2f %.2f)\n", s.x, s.y, s.z, e.x, e.y, e.z);
         }
     }
+}
+
+__global__ void print_int_arr(int* arr, int width, int height) {
+    printf("Printing int array\n");
+    for (int i = 0; i < 10; ++i) {
+        for(int j = 0; j < 10; ++j) {
+            printf("%d ", arr[i * width + j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
 }
 
 
@@ -284,17 +297,25 @@ int main() {
             float5* d_sampled_points;
             int num_points;
             int samples_per_intersect = 32;
-            std::cout << "Finding number of points to sample \n";
-            int* h_num_hits = (int*)malloc(sizeof(int) * width * height);
+            std::cout << "Print Num Hits \n";
+            print_int_arr<<<1,1>>>(d_num_hits, width, height);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            
+            thrust::device_ptr<int> dev_ptr_num_hits = thrust::device_pointer_cast(d_num_hits);
+            num_points = thrust::reduce(dev_ptr_num_hits, dev_ptr_num_hits + width * height);
+            // exclusive scan on dev_ptr_num_hits
+            thrust::exclusive_scan(dev_ptr_num_hits, dev_ptr_num_hits + width * height, dev_ptr_num_hits);
+            // convert dev_ptr_num_hits back to device int pointer
+            d_num_hits = dev_ptr_num_hits.get();
+            std::cout << "Print Num Hits post scan \n";
+            print_int_arr<<<1,1>>>(d_num_hits, width, height);
+            CUDA_CHECK(cudaDeviceSynchronize());
 
-            cudaMemcpy(h_num_hits, d_num_hits, sizeof(int) * width * height, cudaMemcpyDeviceToHost);
-            int num_hits = 0;
-            for (int i = 0; i < width * height; ++i) {
-                num_hits += h_num_hits[i];
-            }
-            printf("num_hits: %d\n", num_hits);
-            printf("sampled_points: %d\n", samples_per_intersect * num_hits);
-            int size_samples = num_hits * samples_per_intersect * sizeof(float5);
+
+            printf("num_hits_cu: %d\n", num_points);
+            
+            printf("sampled_points: %d\n", samples_per_intersect * num_points);
+            int size_samples = num_points * samples_per_intersect * sizeof(float5);
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_samples);
 
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_samples));
