@@ -303,10 +303,13 @@ int main() {
             
             thrust::device_ptr<int> dev_ptr_num_hits = thrust::device_pointer_cast(d_num_hits);
             num_points = thrust::reduce(dev_ptr_num_hits, dev_ptr_num_hits + width * height);
+            thrust::device_vector<int> d_hit_indsV(width * height);
             // exclusive scan on dev_ptr_num_hits
-            thrust::exclusive_scan(dev_ptr_num_hits, dev_ptr_num_hits + width * height, dev_ptr_num_hits);
+            thrust::exclusive_scan(dev_ptr_num_hits, dev_ptr_num_hits + width * height, d_hit_indsV.begin());
+
             // convert dev_ptr_num_hits back to device int pointer
             d_num_hits = dev_ptr_num_hits.get();
+            int *d_hit_inds = thrust::raw_pointer_cast(d_hit_indsV.data());
             std::cout << "Print Num Hits post scan \n";
             print_int_arr<<<1,1>>>(d_num_hits, width, height);
             CUDA_CHECK(cudaDeviceSynchronize());
@@ -319,6 +322,7 @@ int main() {
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_samples);
 
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_samples));
+            
             
             
             // tcnn inference on point buffer from sampling kernels
