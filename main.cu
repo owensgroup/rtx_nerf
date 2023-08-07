@@ -163,7 +163,32 @@ __global__ void print_int_arr(int* arr, int width, int height) {
     printf("\n");
 }
 
+__global__ void print_float2_arr(float2* arr, int width, int height) {
+    printf("Printing float2 array\n");
+    for (int i = 0; i < 10; ++i) {
+        for(int j = 0; j < 10; ++j) {
+            printf("%f %f ", arr[i * width + j].x, arr[i * width + j].y);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
 
+__global__ void print_float5_arr(float5* arr, int size) {
+    printf("Printing float5 array\n");
+    for(int i = 0; i < 10; ++i) {
+        printf("%f %f %f %f %f\n", arr[i].x, arr[i].y, arr[i].z, arr[i].theta, arr[i].phi);
+    }
+    printf("\n");
+}
+
+__global__ void print_float3_arr(float3* arr, int size) {
+    printf("Printing float3 array\n");
+    for(int i = 0; i < 1; ++i) {
+        printf("%f %f %f\n", arr[i].x, arr[i].y, arr[i].z);
+    }
+    printf("\n");
+}
 
 int main() {
     // load data from files
@@ -226,10 +251,12 @@ int main() {
     float3 *d_start_points;
     float3 *d_end_points;
     int *d_num_hits;
+    float2 *d_view_dir;
             
     CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void **)&d_view_dir, width * height * sizeof(float2)));
     std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
 
     Params *d_param;
@@ -274,6 +301,7 @@ int main() {
             params.num_hits = d_num_hits;
             params.num_primitives = num_primitives;
             params.look_at = d_look_at;
+            params.viewing_direction = d_view_dir;
 
             
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
@@ -300,7 +328,11 @@ int main() {
             std::cout << "Print Num Hits \n";
             print_int_arr<<<1,1>>>(d_num_hits, width, height);
             CUDA_CHECK(cudaDeviceSynchronize());
-            
+
+            std::cout << "Print Viewdirs \n";
+            print_float2_arr<<<1,1>>>(d_view_dir, width, height);
+            CUDA_CHECK(cudaDeviceSynchronize());
+
             thrust::device_ptr<int> dev_ptr_num_hits = thrust::device_pointer_cast(d_num_hits);
             num_points = thrust::reduce(dev_ptr_num_hits, dev_ptr_num_hits + width * height);
             thrust::device_vector<int> d_hit_indsV(width * height);
@@ -311,7 +343,7 @@ int main() {
             d_num_hits = dev_ptr_num_hits.get();
             int *d_hit_inds = thrust::raw_pointer_cast(d_hit_indsV.data());
             std::cout << "Print Num Hits post scan \n";
-            print_int_arr<<<1,1>>>(d_num_hits, width, height);
+            print_int_arr<<<1,1>>>(d_hit_inds, width, height);
             CUDA_CHECK(cudaDeviceSynchronize());
 
 
@@ -322,6 +354,19 @@ int main() {
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_samples);
 
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_samples));
+            launchSampler(
+                d_start_points,
+                d_end_points,
+                d_view_dir,
+                d_sampled_points,
+                width, height, grid_resolution,
+                d_num_hits, d_hit_inds, 
+                SAMPLING_REGULAR, inference
+            );
+            CUDA_CHECK(cudaDeviceSynchronize());
+            print_float5_arr<<<1,1>>>(d_sampled_points, num_points * samples_per_intersect);
+            print_float3_arr<<<1,1>>>(d_start_points, 1);
+            print_float3_arr<<<1,1>>>(d_end_points, 1);
             
             
             

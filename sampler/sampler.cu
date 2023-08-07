@@ -1,5 +1,6 @@
 #include "sampler.h"
 #include <thrust/random.h>
+#define BLOCK_SIZE 32
 // Samples are returned from 0.0 to 1.0, where 0.0 is the same as start_points[0] and
 // 1.0 is the same as the last end_point
 
@@ -14,20 +15,25 @@
 __global__ void generate_samples(
     float3* start_points,
     float3* end_points,
+    float2* view_dirs,
     int width,
     int height,
     int grid_res,
     int* num_hits,
     int* indices,
-    int num_segments,
     SAMPLING_TYPE sample_type,
-    float3* samples,
+    float5* samples,
     thrust::minstd_rand rng) 
 {
-    // Get index of this segment
+    // Get index for this ray
     int x = threadIdx.x + blockDim.x * blockIdx.x;
     int y = threadIdx.y + blockDim.y * blockIdx.y;
+    // get the viewing direction for this ray
     int start_index = indices[y * width + x];
+    float2 view_dir = view_dirs[y * width + x];
+    float theta = view_dir.x;
+    float phi = view_dir.y;
+
     if(x < width && y < height) {
         for(int j = 0; j < num_hits[y * width + x]; j++) {
             // grab the start and end points for this segment
@@ -52,7 +58,13 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample;
+                    float5 sample_f;
+                    sample_f.x = sample.x;
+                    sample_f.y = sample.y;
+                    sample_f.z = sample.z;
+                    sample_f.theta = theta;
+                    sample_f.phi = phi;
+                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample_f;
                     t_initial += 1.0f / NUM_SAMPLES_PER_SEGMENT;
                 } else if (sample_type == SAMPLING_UNIFORM) {
                     thrust::uniform_real_distribution<float> dist(0,1);
@@ -62,7 +74,13 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample;
+                    float5 sample_f;
+                    sample_f.x = sample.x;
+                    sample_f.y = sample.y;
+                    sample_f.z = sample.z;
+                    sample_f.theta = theta;
+                    sample_f.phi = phi;
+                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample_f;
                 } else if (sample_type == SAMPLING_STRATIFIED_JITTERING) {
                     thrust::uniform_real_distribution<float> dist(t_initial, t_final);
                     float t = dist(rng);
@@ -71,7 +89,15 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample;            
+
+                    float5 sample_f;
+                    sample_f.x = sample.x;
+                    sample_f.y = sample.y;
+                    sample_f.z = sample.z;
+                    sample_f.theta = theta;
+                    sample_f.phi = phi;
+
+                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample_f;            
 
                     t_initial = t_final;
                     t_final += 1.0f / NUM_SAMPLES_PER_SEGMENT;
@@ -80,25 +106,34 @@ __global__ void generate_samples(
     
         }
     }
-    
-    
-    
-    
-    
-    
-    
-    
 }
 
 void launchSampler(
     float3* d_start_points,
     float3* d_end_points,
-    float5* d_hit_data,
-    int samples_per_intersection, 
+    float2* d_view_dirs,
+    float5* d_sampled_points,
     unsigned int width, 
     unsigned int height,
-    int num_primitives,
-    cudaStream_t& stream,
-    int& num_points) {
-        
+    int grid_res,
+    int* d_num_hits,
+    int* d_indices,
+    SAMPLING_TYPE sample_type, 
+    cudaStream_t& stream) {
+        thrust::minstd_rand rng;
+        dim3 block(BLOCK_SIZE, BLOCK_SIZE);
+        dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+        generate_samples<<<grid, block,0,stream>>>(
+            d_start_points,
+            d_end_points,
+            d_view_dirs,
+            width,
+            height,
+            grid_res,
+            d_num_hits,
+            d_indices,
+            sample_type,
+            d_sampled_points,
+            rng
+        );
     }

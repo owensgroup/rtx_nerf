@@ -12,18 +12,19 @@ struct float5 {
     float x;
     float y;
     float z;
+    float theta;
     float phi;
-    float psi;
 };
 
-void launchUniformSampler(
+void launchSampler(
     float3* d_start_points,
     float3* d_end_points,
-    int* d_num_hits,
-    float5* d_hit_data,
-    int samples_per_intersection, 
+    float2* d_view_dirs,
+    float5* d_sampled_points,
     unsigned int width, 
     unsigned int height,
-    int num_primitives,
-    cudaStream_t& stream,
-    int& num_points);
+    int grid_res,
+    int* d_num_hits,
+    int* d_indices,
+    SAMPLING_TYPE sample_type, 
+    cudaStream_t& stream);

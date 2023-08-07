@@ -67,6 +67,10 @@ extern "C" __global__ void __raygen__ray_march() {
   xd /= norm;
   yd /= norm;
   zd /= norm;
+
+  float theta = atan2f(sqrtf(xd * xd + yd * yd), zd);
+  float phi = atan2f(yd, xd);
+  params.viewing_direction[ray_idx] = make_float2(theta, phi);
   float3 ray_direction = make_float3(xd, yd, zd);
   float3 ray_origin = make_float3(look_at[3], look_at[7], look_at[11]);
   float xo = ray_origin.x / 10;
