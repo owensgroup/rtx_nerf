@@ -58,7 +58,7 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    printf("Thread %d, Writing to sample index %d\n", y*width+x, ((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5);
+                    // printf("Thread %d, Writing to sample index %d\n", y*width+x, ((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5);
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
