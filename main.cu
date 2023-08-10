@@ -216,7 +216,13 @@ __global__ void print_float3_arr(float3* arr, int size) {
 
 __global__ void print_float4_arr(float* arr, int size) {
     printf("Printing float4 array\n");
+    printf("Printing first 32 points \n");
     for(int i = 0; i < 32; ++i) {
+        printf("%f %f %f %f\n", arr[i*4], arr[i*4+1], arr[i*4+2], arr[i*4+3]);
+    }
+    printf("\n");
+    printf("Printing last 32 points \n");
+    for(int i = size-32; i < size; ++i) {
         printf("%f %f %f %f\n", arr[i*4], arr[i*4+1], arr[i*4+2], arr[i*4+3]);
     }
     printf("\n");
@@ -439,6 +445,8 @@ int main() {
                     batch_size * n_output_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
             }
+            // print radiance buffer values
+            print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
             CUDA_CHECK(cudaDeviceSynchronize());
             // Optix Launch Volume Rendering kernel
             printf("Launching Volume Rendering Kernel\n");
