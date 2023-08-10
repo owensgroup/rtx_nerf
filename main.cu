@@ -148,7 +148,7 @@ std::vector<OptixAabb> make_grid(int resolution) {
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
-#define BATCH_SIZE tcnn::batch_size_granularity*4
+#define BATCH_SIZE tcnn::batch_size_granularity*256
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
@@ -388,6 +388,8 @@ int main() {
             printf("num_hits_cu: %d\n", num_points);
             int num_sampled_points = samples_per_intersect * num_points;
             printf("sampled_points: %d\n", num_sampled_points);
+            num_sampled_points = (num_sampled_points / batch_size) * batch_size + batch_size;
+            printf("upsampled_points: %d\n", num_sampled_points);
             float* d_sampled_points;
             float* d_sampled_points_radiance;
             unsigned int size_input = num_sampled_points * sizeof(float) * 5;
@@ -423,7 +425,7 @@ int main() {
             tcnn::GPUMatrix<float> input_batch(n_input_dims, batch_size);
             tcnn::GPUMatrix<float> output_batch(n_output_dims, batch_size);
 
-            for(int i = 0; i < num_sampled_points - batch_size; i+=batch_size) {
+            for(int i = 0; i < num_sampled_points; i+=batch_size) {
                 // printf("Batch %d\n", i / batch_size);
                 // if(i > num_sampled_points - batch_size) {
                 //     printf("Batch %d is out of bounds\n", i / batch_size);
