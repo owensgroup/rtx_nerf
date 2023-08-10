@@ -448,8 +448,9 @@ int main() {
             // print radiance buffer values
             print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
             CUDA_CHECK(cudaDeviceSynchronize());
-            // Optix Launch Volume Rendering kernel
+            // Launch Volume Rendering kernel
             printf("Launching Volume Rendering Kernel\n");
+
             // tcnn compute loss and backpropagate
             tcnn::GPUMatrix<float> target_image(d_image, width, height, channels);
 
