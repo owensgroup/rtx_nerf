@@ -22,7 +22,7 @@ __global__ void generate_samples(
     int* num_hits,
     int* indices,
     SAMPLING_TYPE sample_type,
-    float5* samples,
+    float* samples,
     thrust::minstd_rand rng) 
 {
     // Get index for this ray
@@ -58,13 +58,12 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    float5 sample_f;
-                    sample_f.x = sample.x;
-                    sample_f.y = sample.y;
-                    sample_f.z = sample.z;
-                    sample_f.theta = theta;
-                    sample_f.phi = phi;
-                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample_f;
+                    printf("Thread %d, Writing to sample index %d\n", y*width+x, ((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5);
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
                     t_initial += 1.0f / NUM_SAMPLES_PER_SEGMENT;
                 } else if (sample_type == SAMPLING_UNIFORM) {
                     thrust::uniform_real_distribution<float> dist(0,1);
@@ -74,13 +73,12 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    float5 sample_f;
-                    sample_f.x = sample.x;
-                    sample_f.y = sample.y;
-                    sample_f.z = sample.z;
-                    sample_f.theta = theta;
-                    sample_f.phi = phi;
-                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample_f;
+                    
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
                 } else if (sample_type == SAMPLING_STRATIFIED_JITTERING) {
                     thrust::uniform_real_distribution<float> dist(t_initial, t_final);
                     float t = dist(rng);
@@ -90,14 +88,11 @@ __global__ void generate_samples(
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
 
-                    float5 sample_f;
-                    sample_f.x = sample.x;
-                    sample_f.y = sample.y;
-                    sample_f.z = sample.z;
-                    sample_f.theta = theta;
-                    sample_f.phi = phi;
-
-                    samples[(start_index + j) * NUM_SAMPLES_PER_SEGMENT + i] = sample_f;            
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;            
 
                     t_initial = t_final;
                     t_final += 1.0f / NUM_SAMPLES_PER_SEGMENT;
@@ -112,7 +107,7 @@ void launchSampler(
     float3* d_start_points,
     float3* d_end_points,
     float2* d_view_dirs,
-    float5* d_sampled_points,
+    float* d_sampled_points,
     unsigned int width, 
     unsigned int height,
     int grid_res,

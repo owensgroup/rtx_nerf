@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <cstdio>
@@ -20,6 +21,7 @@
 #include "stb_image_write.h"
 #include "tiny-cuda-nn/common.h"
 #include "tiny-cuda-nn/gpu_matrix.h"
+#include "tiny-cuda-nn/config.h"
 #include <json/json.h>
 #include "rtx/include/params.h"
 #include "rtx/include/rtxFunctions.h"
@@ -31,25 +33,36 @@ nlohmann::json config = {
 	{"loss", {
 		{"otype", "L2"}
 	}},
+    // adam optimizer decays from 5e-4 to 5e-5
 	{"optimizer", {
 		{"otype", "Adam"},
 		{"learning_rate", 1e-3},
+        {"beta1", 0.9},
+        {"beta2", 0.999},
+        {"epsilon", 1e-8}
 	}},
 	{"encoding", {
-		{"otype", "HashGrid"},
-		{"n_levels", 16},
-		{"n_features_per_level", 2},
-		{"log2_hashmap_size", 19},
-		{"base_resolution", 16},
-		{"per_level_scale", 2.0},
-	}},
+        {"otype", "Composite"},
+        {"nested", {
+            {
+                {"n_dims_to_encode", 3}, // Spatial dims
+                {"otype", "Frequency"},
+                {"n_frequencies", 10}
+            },
+            {
+                {"n_dims_to_encode", 2}, // Non-linear appearance dims.
+                {"otype", "Frequency"},
+                {"n_bins", 4}
+            }
+        }}
+    }},
 	{"network", {
 		{"otype", "FullyFusedMLP"},
 		{"activation", "ReLU"},
 		{"output_activation", "None"},
-		{"n_neurons", 64},
-		{"n_hidden_layers", 2},
-	}},
+		{"n_neurons", 128},
+		{"n_hidden_layers", 8}
+	}}
 };
 
 
@@ -174,10 +187,10 @@ __global__ void print_float2_arr(float2* arr, int width, int height) {
     printf("\n");
 }
 
-__global__ void print_float5_arr(float5* arr, int size) {
+__global__ void print_float5_arr(float* arr, int size) {
     printf("Printing float5 array\n");
-    for(int i = 0; i < 10; ++i) {
-        printf("%f %f %f %f %f\n", arr[i].x, arr[i].y, arr[i].z, arr[i].theta, arr[i].phi);
+    for(int i = 0; i < 32; ++i) {
+        printf("%f %f %f %f %f\n", arr[i*5], arr[i*5+1], arr[i*5+2], arr[i*5+3], arr[i*5+4]);
     }
     printf("\n");
 }
@@ -190,9 +203,21 @@ __global__ void print_float3_arr(float3* arr, int size) {
     printf("\n");
 }
 
+__global__ void print_float4_arr(float* arr, int size) {
+    printf("Printing float4 array\n");
+    for(int i = 0; i < 32; ++i) {
+        printf("%f %f %f %f\n", arr[i*4], arr[i*4+1], arr[i*4+2], arr[i*4+3]);
+    }
+    printf("\n");
+}
+
 int main() {
     // load data from files
     // TODO: take images and poses from json and load into DataLoader
+    int n_input_dims = 5;
+    int n_output_dims = 4;
+    int batch_size = tcnn::BATCH_SIZE_GRANULARITY;
+    auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
     int num_epochs = EPOCHS;
     std::cout << "---------------------- Loading Data ----------------------\n";
     // Loads the Training, validation, and test sets from the synthetic lego scene
@@ -259,6 +284,11 @@ int main() {
     CUDA_CHECK(cudaMalloc((void **)&d_view_dir, width * height * sizeof(float2)));
     std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
 
+    float* d_network_input;
+    float* d_network_output;
+    CUDA_CHECK(cudaMalloc((void**)&d_network_input, batch_size * sizeof(float) * 5));
+    CUDA_CHECK(cudaMalloc((void**)&d_network_output, batch_size * sizeof(float) * 4));
+
     Params *d_param;
     CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
     std::cout << "Params Buffer Allocated on GPU" << std::endl;
@@ -322,7 +352,8 @@ int main() {
 
             std::cout << "Launching Sampling Kernel \n";
             //each point stores a location xyz and a viewing direction phi and psi
-            float5* d_sampled_points;
+            float* d_sampled_points;
+            float* d_sampled_points_radiance;
             int num_points;
             int samples_per_intersect = 32;
             std::cout << "Print Num Hits \n";
@@ -348,12 +379,16 @@ int main() {
 
 
             printf("num_hits_cu: %d\n", num_points);
+            int sampled_points_size = samples_per_intersect * num_points;
+            printf("sampled_points: %d\n", sampled_points_size);
             
-            printf("sampled_points: %d\n", samples_per_intersect * num_points);
-            int size_samples = num_points * samples_per_intersect * sizeof(float5);
-            printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_samples);
-
-            CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_samples));
+            unsigned int size_input = sampled_points_size * sizeof(float) * 5;
+            unsigned int size_output = sampled_points_size * sizeof(float) * 4;
+            printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_input);
+            printf("ALLOCATING %d bytes for radiance (shouldn't be zero) \n", size_output);
+            CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_input));
+            CUDA_CHECK(cudaMalloc((void**)&d_sampled_points_radiance,
+                        size_output));
             launchSampler(
                 d_start_points,
                 d_end_points,
@@ -364,17 +399,71 @@ int main() {
                 SAMPLING_REGULAR, inference
             );
             CUDA_CHECK(cudaDeviceSynchronize());
-            print_float5_arr<<<1,1>>>(d_sampled_points, num_points * samples_per_intersect);
+            print_float5_arr<<<1,1>>>(d_sampled_points, sampled_points_size);
+            CUDA_CHECK(cudaDeviceSynchronize());
             print_float3_arr<<<1,1>>>(d_start_points, 1);
+            CUDA_CHECK(cudaDeviceSynchronize());
             print_float3_arr<<<1,1>>>(d_end_points, 1);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            
+            // turn d_sampled_points into tcnn input
+            
+            int num_batches = (float)sampled_points_size / (float)batch_size;
+            printf("TCNN Batch Size Granularity: %d\n", tcnn::BATCH_SIZE_GRANULARITY);
+            printf("Num Batches: %d\n", num_batches);
+
+            printf("Creating TCNN Input\n");
+            float* d_mat_input;
+            // float* d_mat_output;
+            CUDA_CHECK(cudaMalloc((void**)&d_mat_input, batch_size * sizeof(float) * n_input_dims));
+            // CUDA_CHECK(cudaMalloc((void**)&d_mat_output, batch_size * sizeof(float) * n_output_dims));
+            for(int i = 0; i < num_batches; i++) {
+                printf("Inference for batch %d\n", i);
+                // size_t free_byte, total_byte;
+                // printf("GPU Memory Usage Before Inference\n");
+                // CUDA_CHECK(cudaMemGetInfo(&free_byte, &total_byte));
+                // printf("Free: %ld, Total: %ld\n", free_byte, total_byte);
+                unsigned int offset = i * batch_size * sizeof(float) * n_input_dims;
+                CUDA_CHECK(cudaMemcpy(
+                    d_mat_input,
+                    d_sampled_points + (i * batch_size * sizeof(float) * n_input_dims),
+                    batch_size * sizeof(float) * n_input_dims, cudaMemcpyDeviceToDevice));
+
+                tcnn::GPUMatrix<float> input(d_mat_input, n_input_dims, batch_size);
+                tcnn::GPUMatrix<float> output(n_output_dims, batch_size);
+                model.network->inference(inference, input, output);
+                CUDA_CHECK(cudaMemcpy(
+                    d_sampled_points_radiance + (i * batch_size * sizeof(float) * n_output_dims),
+                    output.data(),
+                    batch_size * sizeof(float) * n_output_dims,
+                    cudaMemcpyDeviceToDevice));
+
+                
+            }
             
             
+            // tcnn::GPUMatrix<float> input(d_sampled_points, n_input_dims, sampled_points_size);
+            // tcnn::GPUMatrix<float> output(d_sampled_points_radiance, n_output_dims, sampled_points_size);
             
-            // tcnn inference on point buffer from sampling kernels
+            // copy output data to
+            print_float4_arr<<<1,1>>>(d_sampled_points_radiance, sampled_points_size);
+            CUDA_CHECK(cudaDeviceSynchronize());
             
+            // printf("Doing model inference\n");
+            // // tcnn inference on point buffer from sampling kernels
+            // for(int i = 0; i < num_batches; i++) {
+            //     input.set(d_sampled_points + i * batch_size * n_input_dims, n_input_dims, batch_size);
+            //     model.network->inference(inference, input, output);
+            //     cudaMemcpy(d_network_output + i * batch_size * n_output_dims,
+            //         output.data(),
+            //         batch_size * sizeof(float) * n_output_dims,
+            //         cudaMemcpyDeviceToDevice);
+            // }
+            // CUDA_CHECK(cudaDeviceSynchronize());
             // Optix Launch Volume Rendering kernel
 
             // tcnn compute loss and backpropagate
+            tcnn::GPUMatrix<float> target_image(d_image, width, height, channels);
 
 	    break;
         }

@@ -20,7 +20,7 @@ void launchSampler(
     float3* d_start_points,
     float3* d_end_points,
     float2* d_view_dirs,
-    float5* d_sampled_points,
+    float* d_sampled_points,
     unsigned int width, 
     unsigned int height,
     int grid_res,
