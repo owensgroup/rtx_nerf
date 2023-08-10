@@ -148,7 +148,7 @@ std::vector<OptixAabb> make_grid(int resolution) {
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
-#define BATCH_SIZE tcnn::batch_size_granularity*256
+#define BATCH_SIZE tcnn::batch_size_granularity*2048
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
@@ -426,35 +426,7 @@ int main() {
             tcnn::GPUMatrix<float> output_batch(n_output_dims, batch_size);
 
             for(int i = 0; i < num_sampled_points; i+=batch_size) {
-                // printf("Batch %d\n", i / batch_size);
-                // if(i > num_sampled_points - batch_size) {
-                //     printf("Batch %d is out of bounds\n", i / batch_size);
-                //     printf("i: %d\n", i);
-                //     printf("num_sampled_points: %d\n", num_sampled_points);
-                //     printf("Num Points Remaining: %d\n", num_sampled_points - i);
-                //     printf("Doing inference on remaining points\n");
-                //     unsigned int rem_batch_size = num_sampled_points - i;
-                //     input_batch.resize(n_input_dims, rem_batch_size);
-                //     output_batch.resize(n_output_dims, rem_batch_size);
-                //     unsigned int offset = i * n_input_dims;
-                //     CUDA_CHECK(cudaMemcpy(
-                //         input_batch.data(),
-                //         d_sampled_points + offset,
-                //         sizeof(float) * rem_batch_size,
-                //         cudaMemcpyDeviceToDevice));
-                //     model.network->inference(inference, input_batch, output_batch);
-                //     // CUDA_CHECK(cudaMemcpy(
-                //     //     d_sampled_points_radiance + i * 4,
-                //     //     output_batch.data(),
-                //     //     rem_batch_size * sizeof(float),
-                //     //     cudaMemcpyDeviceToDevice));
-                // }
-                // else {
-                    
-                // }
                 unsigned int offset = i * n_input_dims;
-                // print_float5_arr<<<1,1>>>(d_sampled_points + offset, 256);
-                // CUDA_CHECK(cudaDeviceSynchronize());
                 CUDA_CHECK(cudaMemcpy(
                     input_batch.data(),
                     d_sampled_points + offset,
@@ -466,70 +438,8 @@ int main() {
                     output_batch.data(),
                     batch_size * n_output_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
-                // printf("Batch %d Done\n", i / batch_size);
             }
-            // tcnn::GPUMatrix<float> input_matrix(d_sampled_points, num_sampled_points, n_input_dims);
-            // tcnn::GPUMatrix<float> output_matrix(n_output_dims, num_sampled_points);
-            // CUDA_CHECK(cudaMemGetInfo(&free_byte, &total_byte));
-            // printf("Free: %ld, Total: %ld\n", free_byte, total_byte);
-
-            // printf("Launching TCNN Inference\n");
-            // model.network->inference(inference, input_matrix, output_matrix);
-            // CUDA_CHECK(cudaDeviceSynchronize());
-            // int num_batches = (float)sampled_points_size / (float)batch_size;
-            // printf("TCNN Batch Size Granularity: %d\n", tcnn::BATCH_SIZE_GRANULARITY);
-            // printf("Num Batches: %d\n", num_batches);
-            // tcnn::GPUMatrix<float> output_matrix(n_output_dims, sampled_points_size);
-            // model.network->inference(inference, input_matrix, output_matrix);
-            // CUDA_CHECK(cudaDeviceSynchronize());
-            // printf("Creating TCNN Input\n");
-            // float* d_mat_input;
-            // // float* d_mat_output;
-            // CUDA_CHECK(cudaMalloc((void**)&d_mat_input, batch_size * sizeof(float) * n_input_dims));
-            // // CUDA_CHECK(cudaMalloc((void**)&d_mat_output, batch_size * sizeof(float) * n_output_dims));
-            // for(int i = 0; i < num_batches; i++) {
-            //     printf("Inference for batch %d\n", i);
-            //     // size_t free_byte, total_byte;
-            //     // printf("GPU Memory Usage Before Inference\n");
-            //     // CUDA_CHECK(cudaMemGetInfo(&free_byte, &total_byte));
-            //     // printf("Free: %ld, Total: %ld\n", free_byte, total_byte);
-            //     unsigned int offset = i * batch_size * sizeof(float) * n_input_dims;
-            //     CUDA_CHECK(cudaMemcpy(
-            //         d_mat_input,
-            //         d_sampled_points + offset,
-            //         batch_size * sizeof(float) * n_input_dims, cudaMemcpyDeviceToDevice));
-
-            //     tcnn::GPUMatrix<float> input(d_mat_input, n_input_dims, batch_size);
-            //     tcnn::GPUMatrix<float> output(n_output_dims, batch_size);
-            //     model.network->inference(inference, input, output);
-            //     CUDA_CHECK(cudaMemcpy(
-            //         d_sampled_points_radiance + (i * batch_size * sizeof(float) * n_output_dims),
-            //         output.data(),
-            //         batch_size * sizeof(float) * n_output_dims,
-            //         cudaMemcpyDeviceToDevice));
-
-                
-            // }
-            
-            
-            // tcnn::GPUMatrix<float> input(d_sampled_points, n_input_dims, sampled_points_size);
-            // tcnn::GPUMatrix<float> output(d_sampled_points_radiance, n_output_dims, sampled_points_size);
-            
-            // copy output data to
-            // print_float4_arr<<<1,1>>>(d_sampled_points_radiance, sampled_points_size);
-            // CUDA_CHECK(cudaDeviceSynchronize());
-            
-            // printf("Doing model inference\n");
-            // // tcnn inference on point buffer from sampling kernels
-            // for(int i = 0; i < num_batches; i++) {
-            //     input.set(d_sampled_points + i * batch_size * n_input_dims, n_input_dims, batch_size);
-            //     model.network->inference(inference, input, output);
-            //     cudaMemcpy(d_network_output + i * batch_size * n_output_dims,
-            //         output.data(),
-            //         batch_size * sizeof(float) * n_output_dims,
-            //         cudaMemcpyDeviceToDevice);
-            // }
-            // CUDA_CHECK(cudaDeviceSynchronize());
+            CUDA_CHECK(cudaDeviceSynchronize());
             // Optix Launch Volume Rendering kernel
             printf("Launching Volume Rendering Kernel\n");
             // tcnn compute loss and backpropagate
