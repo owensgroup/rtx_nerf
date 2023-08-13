@@ -64,7 +64,7 @@ ImageDataset load_images_json(std::string basename, std::string s) {
         // Load the image using the file path
         file_path = basename + "/" + file_path + ".png";
         //cv::Mat image = cv::imread(filepath, cv::IMREAD_COLOR);
-        int desired_channels = 4;
+        int desired_channels = 3;
         //std::printf("Loading image from %s\n", file_path.c_str());
         float* image = stbi_loadf(file_path.c_str(), &width, &height, 
                                             &channels_in_file, 
