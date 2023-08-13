@@ -40,6 +40,7 @@ include_directories(${JSON_INC_PATH}
                     ${CMAKE_SOURCE_DIR}/rtx/include
                     ${CMAKE_SOURCE_DIR}/common/
                     ${CMAKE_SOURCE_DIR}/sampler
+                    ${CMAKE_SOURCE_DIR}/vol_render
 		                ${OptiX7_INCLUDE_DIRS}
                     ${CMAKE_BINARY_DIR}
                     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
@@ -54,6 +55,7 @@ set(SOURCES
     rtx/src/rtxFunctions.cpp
     loader/data_loader.cpp
     sampler/sampler.cu
+    vol_render/vol_render.cu
     common/common.cpp
 )
 

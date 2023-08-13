@@ -1,10 +1,11 @@
+#include "vol_render.h"
 // A CUDA kernel which given a list of samples per ray and the t-values and densities
 // at those sample points, computes a volume rendering of the given rays using those
 // samples.
 //
 // INPUT -- LENGTH
 // network_outputs -- NUM_RAY_HITS * NUM_SAMPLES_PER_RAY * 4
-// network_inputs -- NUM_RAY_HITS * NUM_SAMPLES_PER_RAY * 5
+// network_inputs -- NUM_RAY_HITS * NUM_SAMPLES_PER_RAY * 5 (x,y,z,theta,phi)
 // NUM_RAYS -- numBlocks * threadsPerBlock
 // NUM_SAMPLES_PER_RAY -- 32
 // 
@@ -16,13 +17,14 @@
 //
 //
 __global__ void volrender_cuda(
-    float* network_outputs,
     float* network_inputs,
+    float* network_outputs,
     int* num_hits,
     int* indices,
+    float* ray_hit,
     int width,
     int height,
-    int num_samples_per_ray,
+    int num_samples_per_hit,
     float3* pixels) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -33,39 +35,59 @@ __global__ void volrender_cuda(
     int ray_idx = x + y * width;
     int start_index = indices[ray_idx];
     int num_ray_hits = num_hits[ray_idx];
-    for(int j = 0; j < num_ray_hits; j++) {
-        float transmittance = 0.0f;
-        float t_initial = 0.0f;
-        float3 accum_color;
-        accum_color.x = 0.0f;
-        accum_color.y = 0.0f;
-        accum_color.z = 0.0f;
-    }
     float transmittance = 0.0f;
-    float t_initial = 0.0f;
+    float t_initial = 0;
     float3 accum_color;
     accum_color.x = 0.0f;
     accum_color.y = 0.0f;
     accum_color.z = 0.0f;
-    #pragma unroll
-    for (int i = 0; i < num_samples_per_ray; i++) {
-        float3 color = colors[global_thread_idx * i + i];
-        float sigma = densities[global_thread_idx * i + i];
+    for(int j = 0; j < num_ray_hits; j++) {
+        #pragma unroll
+        for(int i = 0; i < num_samples_per_hit; i++) {
+            float3 color;
+            float sigma;
+            float t;
+            color.x = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4];
+            color.y = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 1];
+            color.z = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 2];
+            sigma = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 3];
+            t = ray_hit[(start_index + j) * num_samples_per_hit + i];
+            float delta = t - t_initial;
+            t_initial = t;
+            transmittance += delta * sigma;
+            color.x = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.x;
+            color.y = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.y;
+            color.z = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.z;
 
-        float t_final = t_samples[global_thread_idx * i + i];
-        float delta = t_final - t_initial;
-        t_initial = t_final;
-
-        transmittance += delta * sigma;
-
-        color.x = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.x;
-        color.y = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.y;
-        color.z = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.z;
-
-        accum_color.x += color.x;
-        accum_color.y += color.y;
-        accum_color.z += color.z;
+            accum_color.x += color.x;
+            accum_color.y += color.y;
+            accum_color.z += color.z;
+        }
     }
+    pixels[ray_idx] = accum_color;
+}
 
-    pixels[global_thread_idx] = accum_color;
+void launch_volrender_cuda(
+    float* network_inputs,
+    float* network_outputs,
+    int* num_hits,
+    int* indices,
+    float* ray_hit,
+    int width,
+    int height,
+    int num_samples_per_hit,
+    float3* pixels) {
+    dim3 threadsPerBlock(32, 32);
+    dim3 numBlocks((width + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                   (height + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    volrender_cuda<<<numBlocks, threadsPerBlock>>>(
+        network_inputs,
+        network_outputs,
+        num_hits,
+        indices,
+        ray_hit,
+        width,
+        height,
+        num_samples_per_hit,
+        pixels);
 }

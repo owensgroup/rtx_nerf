@@ -27,7 +27,7 @@
 #include "rtx/include/rtxFunctions.h"
 
 #include "data_loader.h"
-
+#include "vol_render.h"
 // Configure the model
 nlohmann::json config = {
 	{"loss", {
@@ -294,7 +294,9 @@ int main() {
     float3 *d_end_points;
     int *d_num_hits;
     float2 *d_view_dir;
-            
+    float3* d_pixels;
+    
+    CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
@@ -398,6 +400,7 @@ int main() {
             printf("upsampled_points: %d\n", num_sampled_points);
             float* d_sampled_points;
             float* d_sampled_points_radiance;
+            float* d_t_vals;
             unsigned int size_input = num_sampled_points * sizeof(float) * 5;
             unsigned int size_output = num_sampled_points * sizeof(float) * 4;
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_input);
@@ -405,11 +408,13 @@ int main() {
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_input));
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points_radiance,
                         size_output));
+            CUDA_CHECK(cudaMalloc((void**)&d_t_vals, sizeof(float) * num_sampled_points));
 
             launchSampler(
                 d_start_points,
                 d_end_points,
                 d_view_dir,
+                d_t_vals,
                 d_sampled_points,
                 width, height, grid_resolution,
                 d_num_hits, d_hit_inds, 
@@ -450,7 +455,38 @@ int main() {
             CUDA_CHECK(cudaDeviceSynchronize());
             // Launch Volume Rendering kernel
             printf("Launching Volume Rendering Kernel\n");
+            // Launch Volume Rendering kernel
+            printf("Launching Volume Rendering Kernel\n");
+            // Call the volume rendering kernel
+            // Initialize and allocate d_pixels
+            
 
+            launch_volrender_cuda(
+                d_sampled_points,
+                d_sampled_points_radiance,
+                d_num_hits,
+                d_hit_inds,
+                d_t_vals,
+                width,
+                height,
+                samples_per_intersect,
+                d_pixels
+            );
+            printf("Finished Volume Rendering Kernel\n");
+            print_float3_arr<<<1,1>>>(d_pixels, width * height);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            // Write d_pixels to an image named "test" in PNG format using stb
+            float* h_pixels = (float*)malloc(height*width * sizeof(float3));
+            CUDA_CHECK(cudaMemcpy(
+                h_pixels,
+                d_pixels,
+                height*width * sizeof(float3),
+                cudaMemcpyDeviceToHost));
+            stbi_write_png("test.png", width, height, 3, h_pixels, height*width * sizeof(float3));
+            
+            
+            
+            
             // tcnn compute loss and backpropagate
             tcnn::GPUMatrix<float> target_image(d_image, width, height, channels);
 

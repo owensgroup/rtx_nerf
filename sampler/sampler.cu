@@ -23,6 +23,7 @@ __global__ void generate_samples(
     int* indices,
     SAMPLING_TYPE sample_type,
     float* samples,
+    float* t_vals,
     thrust::minstd_rand rng) 
 {
     // Get index for this ray
@@ -64,11 +65,12 @@ __global__ void generate_samples(
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
+                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
                     t_initial += 1.0f / NUM_SAMPLES_PER_SEGMENT;
                 } else if (sample_type == SAMPLING_UNIFORM) {
                     thrust::uniform_real_distribution<float> dist(0,1);
                     float t = dist(rng);
-
+                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
                     float3 sample = origin;
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
@@ -93,7 +95,7 @@ __global__ void generate_samples(
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;            
-
+                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
                     t_initial = t_final;
                     t_final += 1.0f / NUM_SAMPLES_PER_SEGMENT;
                 }
@@ -107,6 +109,7 @@ void launchSampler(
     float3* d_start_points,
     float3* d_end_points,
     float2* d_view_dirs,
+    float* d_t_vals,
     float* d_sampled_points,
     unsigned int width, 
     unsigned int height,
@@ -129,6 +132,7 @@ void launchSampler(
             d_indices,
             sample_type,
             d_sampled_points,
+            d_t_vals,
             rng
         );
     }
