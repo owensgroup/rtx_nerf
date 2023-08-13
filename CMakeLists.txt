@@ -40,6 +40,7 @@ include_directories(${JSON_INC_PATH}
                     ${CMAKE_SOURCE_DIR}/rtx/include
                     ${CMAKE_SOURCE_DIR}/common/
                     ${CMAKE_SOURCE_DIR}/sampler
+                    ${CMAKE_SOURCE_DIR}/vol_render
 		                ${OptiX7_INCLUDE_DIRS}
                     ${CMAKE_BINARY_DIR}
                     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
@@ -53,7 +54,8 @@ set(SOURCES
     main.cu
     rtx/src/rtxFunctions.cpp
     loader/data_loader.cpp
-    sampler/sampler.cpp
+    sampler/sampler.cu
+    vol_render/vol_render.cu
     common/common.cpp
 )
 
@@ -65,12 +67,12 @@ set_target_properties(optx_nerf PROPERTIES
 set_target_properties(optx_nerf PROPERTIES CUDA_ARCHITECTURES 70)
 #set_source_files_properties(test.cu PROPERTIES LANGUAGE CUDA)
 
-message("${OpenCV_LIBS}")
+add_subdirectory(lib/tiny-cuda-nn)
 # Link against the JsonCpp library
 target_link_libraries(optx_nerf jsoncpp_lib cuda ${OptiX_LIBRARY} 
             ${CUDA_LIBRARIES}
-            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/libtiny-cuda-nn.a
-            ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn/build/dependencies/fmt/libfmt.a
+            tiny-cuda-nn
+            fmt
             ${CMAKE_DL_LIBS})
 
 add_ptx_targets(optx_nerf optixPrograms)

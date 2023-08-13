@@ -1,9 +1,12 @@
 #include <iostream>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <cstdio>
 #include <fstream>
-
+#include <math.h>
+#include <thrust/device_vector.h>
+#include <thrust/device_ptr.h>
 #include "stdio.h"
 #include "sampler.h"
 
@@ -18,36 +21,48 @@
 #include "stb_image_write.h"
 #include "tiny-cuda-nn/common.h"
 #include "tiny-cuda-nn/gpu_matrix.h"
+#include "tiny-cuda-nn/config.h"
 #include <json/json.h>
 #include "rtx/include/params.h"
 #include "rtx/include/rtxFunctions.h"
 
 #include "data_loader.h"
-
+#include "vol_render.h"
 // Configure the model
 nlohmann::json config = {
 	{"loss", {
 		{"otype", "L2"}
 	}},
+    // adam optimizer decays from 5e-4 to 5e-5
 	{"optimizer", {
 		{"otype", "Adam"},
 		{"learning_rate", 1e-3},
+        {"beta1", 0.9},
+        {"beta2", 0.999},
+        {"epsilon", 1e-8}
 	}},
 	{"encoding", {
-		{"otype", "HashGrid"},
-		{"n_levels", 16},
-		{"n_features_per_level", 2},
-		{"log2_hashmap_size", 19},
-		{"base_resolution", 16},
-		{"per_level_scale", 2.0},
-	}},
+        {"otype", "Composite"},
+        {"nested", {
+            {
+                {"n_dims_to_encode", 3}, // Spatial dims
+                {"otype", "Frequency"},
+                {"n_frequencies", 10}
+            },
+            {
+                {"n_dims_to_encode", 2}, // Non-linear appearance dims.
+                {"otype", "Frequency"},
+                {"n_bins", 4}
+            }
+        }}
+    }},
 	{"network", {
 		{"otype", "FullyFusedMLP"},
 		{"activation", "ReLU"},
 		{"output_activation", "None"},
-		{"n_neurons", 64},
-		{"n_hidden_layers", 2},
-	}},
+		{"n_neurons", 128},
+		{"n_hidden_layers", 8}
+	}}
 };
 
 
@@ -123,6 +138,8 @@ std::vector<OptixAabb> make_grid(int resolution) {
                 aabb.minZ = -1.0f + z * box_length;
                 aabb.maxZ = -1.0f + z * box_length + box_length;
                 grid.push_back(aabb);
+                //std::printf("aabb (%.2f %.2f %.2f) (%.2f %.2f %.2f)\n",
+                //        aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ);
             }
         }
     }
@@ -131,14 +148,93 @@ std::vector<OptixAabb> make_grid(int resolution) {
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
-#define BATCH_SIZE tcnn::batch_size_granularity
+#define BATCH_SIZE tcnn::batch_size_granularity*2048
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
 
+__global__ void print_intersections(float3* start, float3* end, int* num_hits, int num_prim) {
+    printf("Intersections\n");
+    for (int i = 0; i < 100; ++i) {
+        printf("ray (%i): %i hits\n", i, num_hits[i]); // origin = (%.2f, %.2f, %.2f)\n  ",
+        for (int j = 0; j < num_hits[i]; ++j) {
+            float3 s = start[i*num_prim + j];
+            float3 e = end[i*num_prim + j];
+            printf("   (%.2f %.2f %.2f) (%.2f %.2f %.2f)\n", s.x, s.y, s.z, e.x, e.y, e.z);
+        }
+    }
+}
+
+__global__ void print_int_arr(int* arr, int width, int height) {
+    printf("Printing int array\n");
+    for (int i = 0; i < 10; ++i) {
+        for(int j = 0; j < 10; ++j) {
+            printf("%d ", arr[i * width + j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+__global__ void print_float2_arr(float2* arr, int width, int height) {
+    printf("Printing float2 array\n");
+    for (int i = 0; i < 10; ++i) {
+        for(int j = 0; j < 10; ++j) {
+            printf("%f %f ", arr[i * width + j].x, arr[i * width + j].y);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+__global__ void print_float5_arr(float* arr, int size) {
+    printf("Printing first 32 points \n");
+    for(int i = 0; i < 32; ++i) {
+        printf("%f %f %f %f %f\n", arr[i*5], arr[i*5+1], arr[i*5+2], arr[i*5+3], arr[i*5+4]);
+    }
+    printf("\n");
+    printf("Printing last 32 points \n");
+    for(int i = size-32; i < size; ++i) {
+        printf("%f %f %f %f %f\n", arr[i*5], arr[i*5+1], arr[i*5+2], arr[i*5+3], arr[i*5+4]);
+    }
+    printf("\n");
+}
+
+__global__ void print_float3_arr(float3* arr, int size) {
+    printf("Printing float3 array\n");
+    printf("Printing first 32 points \n");
+    for(int i = 0; i < 32; ++i) {
+        printf("%f %f %f\n", arr[i].x, arr[i].y, arr[i].z);
+    }
+    printf("\n");
+    printf("Printing last 32 points \n");
+    for(int i = size-32; i < size; ++i) {
+        printf("%f %f %f\n", arr[i].x, arr[i].y, arr[i].z);
+    }
+    printf("\n");
+}
+
+__global__ void print_float4_arr(float* arr, int size) {
+    printf("Printing float4 array\n");
+    printf("Printing first 32 points \n");
+    for(int i = 0; i < 32; ++i) {
+        printf("%f %f %f %f\n", arr[i*4], arr[i*4+1], arr[i*4+2], arr[i*4+3]);
+    }
+    printf("\n");
+    printf("Printing last 32 points \n");
+    for(int i = size-32; i < size; ++i) {
+        printf("%f %f %f %f\n", arr[i*4], arr[i*4+1], arr[i*4+2], arr[i*4+3]);
+    }
+    printf("\n");
+}
+
 int main() {
     // load data from files
     // TODO: take images and poses from json and load into DataLoader
+    int n_input_dims = 5;
+    int n_output_dims = 4;
+    int batch_size = BATCH_SIZE;
+    auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
     int num_epochs = EPOCHS;
     std::cout << "---------------------- Loading Data ----------------------\n";
     // Loads the Training, validation, and test sets from the synthetic lego scene
@@ -147,6 +243,9 @@ int main() {
     unsigned int width = train_set.image_width;
     unsigned int height = train_set.image_height;
     unsigned int channels = train_set.image_channels;
+    float training_focal = train_set.focal;
+    float aspect_ratio = (float)width / (float)height;
+    float focal_length = 1.0f / tan(0.5f * training_focal);
     size_t image_size = width * height * channels;
     // get training dataset from datasets
     std::vector<float*> training_images = datasets[0].images;
@@ -180,7 +279,7 @@ int main() {
     std::vector<OptixAabb> grid = make_grid(grid_resolution);
     int num_primitives = grid.size();
     
-    rtx_dataholder->initAccelerationStructure(grid);
+    OptixAabb* d_aabb = rtx_dataholder->initAccelerationStructure(grid);
     std::cout << "Done Building Acceleration Structure \n";
     std::cout << "---------------------- Done Initializing Optix ----------------------\n\n\n";
 
@@ -194,11 +293,17 @@ int main() {
     float3 *d_start_points;
     float3 *d_end_points;
     int *d_num_hits;
-            
-    CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * num_primitives * sizeof(float3)));
-    CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * num_primitives * sizeof(float3)));
+    float2 *d_view_dir;
+    float3* d_pixels;
+    
+    CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * 3 * grid_resolution * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void **)&d_view_dir, width * height * sizeof(float2)));
     std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
+
+    
 
     Params *d_param;
     CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
@@ -219,8 +324,8 @@ int main() {
             CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, inference));
 
             // Memset ray intersection buffers
-            CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * num_primitives * sizeof(float3)));
-            CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * num_primitives * sizeof(float3)));
+            CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
+            CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
             CUDA_CHECK(cudaMemset(d_num_hits, 0, width * height * sizeof(int)));
 
             // Algorithmic parameters and data pointers used in GPU program
@@ -230,17 +335,24 @@ int main() {
             params.delta = make_float3(d, d, d);
             params.min_point = make_float3(-1, -1, -1);
             params.max_point = make_float3(1, 1, 1);
+            params.intersection_arr_size = 3 * grid_resolution;
             params.width = width;
             params.height = height;
+            params.focal_length = focal_length;
+            params.aspect_ratio = aspect_ratio;
             params.handle = rtx_dataholder->gas_handle;
+            params.aabb = d_aabb;
             params.start_points = d_start_points;
             params.end_points = d_end_points;
             params.num_hits = d_num_hits;
             params.num_primitives = num_primitives;
-            // params.total_num_hits = 0;
+            params.look_at = d_look_at;
+            params.viewing_direction = d_view_dir;
+
+            
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
-            std::cout << "Launching Ray Tracer in Ray Marching Mode \n";
+            std::cout << "Launching Ray Tracer in Ray Marching Mode (" << width*height << " rays)\n";
             OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, inference,
                                     reinterpret_cast<CUdeviceptr>(d_param),
                                     sizeof(Params), &sbt_ray_march, width, height, 1));
@@ -250,46 +362,137 @@ int main() {
             d_start_points = params.start_points;
             d_end_points = params.end_points;
             d_num_hits = params.num_hits;
-            // int total_num_hits = params.total_num_hits;
-            // std::cout << "Total Number of Hits: " << total_num_hits << std::endl;
-            // float3* d_intersect_start;
-            // float3* d_intersect_end;
-            // CUDA_CHECK(cudaMalloc((void **)&d_intersect_start, total_num_hits * sizeof(float3)));
-            // CUDA_CHECK(cudaMalloc((void **)&d_intersect_end, total_num_hits * sizeof(float3)));
 
-            // dim3 threadsPerBlock(16, 16);
-            // dim3 numBlocks((width + threadsPerBlock.x - 1) / threadsPerBlock.x,
-            //                 (height + threadsPerBlock.y - 1) / threadsPerBlock.y);
-            // gatherIntersections<<<numBlocks, threadsPerBlock>>>(
-            //     d_start_points, d_end_points,
-            //     d_num_hits, d_intersect_start, d_intersect_end, 
-            //     width, height, num_primitives);
-            // gather entry and exit points
+            print_intersections<<<1,1>>>(d_start_points, d_end_points, d_num_hits, 3 * grid_resolution);
+            CUDA_CHECK(cudaDeviceSynchronize());
 
-
-            int samples_per_intersect = 32;
             std::cout << "Launching Sampling Kernel \n";
             //each point stores a location xyz and a viewing direction phi and psi
-            float5* d_sampled_points;
+            
             int num_points;
-            CUDA_CHECK(cudaMalloc((void **)&d_sampled_points, width * height * num_primitives * samples_per_intersect * sizeof(float5)));
-            launchUniformSampler(
+            int samples_per_intersect = 32;
+            std::cout << "Print Num Hits \n";
+            print_int_arr<<<1,1>>>(d_num_hits, width, height);
+            CUDA_CHECK(cudaDeviceSynchronize());
+
+            std::cout << "Print Viewdirs \n";
+            print_float2_arr<<<1,1>>>(d_view_dir, width, height);
+            CUDA_CHECK(cudaDeviceSynchronize());
+
+            thrust::device_ptr<int> dev_ptr_num_hits = thrust::device_pointer_cast(d_num_hits);
+            num_points = thrust::reduce(dev_ptr_num_hits, dev_ptr_num_hits + width * height);
+            thrust::device_vector<int> d_hit_indsV(width * height);
+            // exclusive scan on dev_ptr_num_hits
+            thrust::exclusive_scan(dev_ptr_num_hits, dev_ptr_num_hits + width * height, d_hit_indsV.begin());
+
+            // convert dev_ptr_num_hits back to device int pointer
+            d_num_hits = dev_ptr_num_hits.get();
+            int *d_hit_inds = thrust::raw_pointer_cast(d_hit_indsV.data());
+            std::cout << "Print Num Hits post scan \n";
+            print_int_arr<<<1,1>>>(d_hit_inds, width, height);
+            CUDA_CHECK(cudaDeviceSynchronize());
+
+
+            printf("num_hits_cu: %d\n", num_points);
+            int num_sampled_points = samples_per_intersect * num_points;
+            printf("sampled_points: %d\n", num_sampled_points);
+            num_sampled_points = (num_sampled_points / batch_size) * batch_size + batch_size;
+            printf("upsampled_points: %d\n", num_sampled_points);
+            float* d_sampled_points;
+            float* d_sampled_points_radiance;
+            float* d_t_vals;
+            unsigned int size_input = num_sampled_points * sizeof(float) * 5;
+            unsigned int size_output = num_sampled_points * sizeof(float) * 4;
+            printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_input);
+            printf("ALLOCATING %d bytes for radiance (shouldn't be zero) \n", size_output);
+            CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_input));
+            CUDA_CHECK(cudaMalloc((void**)&d_sampled_points_radiance,
+                        size_output));
+            CUDA_CHECK(cudaMalloc((void**)&d_t_vals, sizeof(float) * num_sampled_points));
+
+            launchSampler(
                 d_start_points,
                 d_end_points,
-                d_num_hits,
+                d_view_dir,
+                d_t_vals,
                 d_sampled_points,
-                samples_per_intersect,
-                width, height,
-                num_primitives, 
-                inference,
-                num_points);
-            // tcnn inference on point buffer from sampling kernels
+                width, height, grid_resolution,
+                d_num_hits, d_hit_inds, 
+                SAMPLING_REGULAR, inference
+            );
+            CUDA_CHECK(cudaDeviceSynchronize());
+            // print_float5_arr<<<1,1>>>(d_sampled_points, num_sampled_points);
+            // CUDA_CHECK(cudaDeviceSynchronize());
+            // print_float3_arr<<<1,1>>>(d_start_points, width * height * grid_resolution * 3);
+            // CUDA_CHECK(cudaDeviceSynchronize());
+            // print_float3_arr<<<1,1>>>(d_end_points, width * height * grid_resolution * 3);
+            // CUDA_CHECK(cudaDeviceSynchronize());
             
-            // Optix Launch Volume Rendering kernel
+            // turn d_sampled_points into tcnn input
+            size_t free_byte, total_byte;
+            printf("GPU Memory Usage Before Inference\n");
+            CUDA_CHECK(cudaMemGetInfo(&free_byte, &total_byte));
+            printf("Free: %ld, Total: %ld\n", free_byte, total_byte);
+            tcnn::GPUMatrix<float> input_batch(n_input_dims, batch_size);
+            tcnn::GPUMatrix<float> output_batch(n_output_dims, batch_size);
 
+            for(int i = 0; i < num_sampled_points; i+=batch_size) {
+                unsigned int offset = i * n_input_dims;
+                CUDA_CHECK(cudaMemcpy(
+                    input_batch.data(),
+                    d_sampled_points + offset,
+                    batch_size * n_input_dims * sizeof(float),
+                    cudaMemcpyDeviceToDevice));
+                model.network->inference(inference, input_batch, output_batch);
+                CUDA_CHECK(cudaMemcpy(
+                    d_sampled_points_radiance + i * 4,
+                    output_batch.data(),
+                    batch_size * n_output_dims * sizeof(float),
+                    cudaMemcpyDeviceToDevice));
+            }
+            // print radiance buffer values
+            print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            // Launch Volume Rendering kernel
+            printf("Launching Volume Rendering Kernel\n");
+            // Launch Volume Rendering kernel
+            printf("Launching Volume Rendering Kernel\n");
+            // Call the volume rendering kernel
+            // Initialize and allocate d_pixels
+            
+
+            launch_volrender_cuda(
+                d_sampled_points,
+                d_sampled_points_radiance,
+                d_num_hits,
+                d_hit_inds,
+                d_t_vals,
+                width,
+                height,
+                samples_per_intersect,
+                d_pixels
+            );
+            printf("Finished Volume Rendering Kernel\n");
+            print_float3_arr<<<1,1>>>(d_pixels, width * height);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            // Write d_pixels to an image named "test" in PNG format using stb
+            float* h_pixels = (float*)malloc(height*width * sizeof(float3));
+            CUDA_CHECK(cudaMemcpy(
+                h_pixels,
+                d_pixels,
+                height*width * sizeof(float3),
+                cudaMemcpyDeviceToHost));
+            stbi_write_png("test.png", width, height, 3, h_pixels, height*width * sizeof(float3));
+            
+            
+            
+            
             // tcnn compute loss and backpropagate
+            tcnn::GPUMatrix<float> target_image(d_image, width, height, channels);
 
+	    break;
         }
+        break;
     }
     return 0;
 }

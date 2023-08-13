@@ -1,0 +1,12 @@
+#include <cuda_runtime_api.h>
+#include <optix.h>
+void launch_volrender_cuda(
+    float* network_inputs,
+    float* network_outputs,
+    int* num_hits,
+    int* indices,
+    float* ray_hit,
+    int width,
+    int height,
+    int num_samples_per_hit,
+    float3* pixels);
