@@ -47,6 +47,7 @@ ImageDataset load_images_json(std::string basename, std::string s) {
     float camera_angle_x = root["camera_angle_x"].asFloat();
     //std::cout << "Camera Angle X: " << camera_angle_x << std::endl;
     int width, height, channels_in_file;
+    int desired_channels = 3;
     const Json::Value frames = root["frames"];
     ProgressBar bar;
     double i = 0;
@@ -57,15 +58,8 @@ ImageDataset load_images_json(std::string basename, std::string s) {
         const Json::Value transform_matrix = frame["transform_matrix"];
         bar.update(i);
         i += .01;
-        // std::cout << "File Path: " << file_path << std::endl;
-        // std::cout << "Rotation: " << rotation << std::endl;
-
-        //std::printf("basename = %s\n", basename.c_str());
-        // Load the image using the file path
         file_path = basename + "/" + file_path + ".png";
-        //cv::Mat image = cv::imread(filepath, cv::IMREAD_COLOR);
-        int desired_channels = 3;
-        //std::printf("Loading image from %s\n", file_path.c_str());
+        
         float* image = stbi_loadf(file_path.c_str(), &width, &height, 
                                             &channels_in_file, 
                                             desired_channels);
@@ -95,7 +89,7 @@ ImageDataset load_images_json(std::string basename, std::string s) {
     dataset.focal = focal;
     dataset.image_width = width;
     dataset.image_height = height;
-    dataset.image_channels = channels_in_file;
+    dataset.image_channels = desired_channels;
     return dataset;
 }
 

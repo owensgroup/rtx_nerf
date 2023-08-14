@@ -309,26 +309,7 @@ int main() {
     Params *d_param;
     CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
     std::cout << "Params Buffer Allocated on GPU" << std::endl;
-    int channels_in_file;
-    int desired_channels = 3;
-    int w, h;
-    float* image = stbi_loadf("/home/tsaluru/opt_nerf/data/nerf_synthetic/lego/train/r_0.png", &w, &h, 
-                                            &channels_in_file, 
-                                            desired_channels);
-    // print width, height, channels
-    
-    printf("Width: %i, Height: %i, Channels: %i\n", w, h, channels_in_file);
-    // print first 12 entries of image
-    printf("Printing the first 12 entries of image:\n");
-    for (int i = 0; i < 12; i++) {
-        printf("%f ", image[i]);
-    }
-    // printf("\n");
-    // // print last 12 entries of image
-    // printf("Printing the last 12 entries of image:\n");
-    // for (int i = width*height*channels_in_file - 12; i < width*height*channels_in_file; i++) {
-    //     printf("%f ", image[i]);
-    // }
+
     // We train our neural network for a specific amount of epochs
     for (int j = 0; j < num_epochs; ++j) {
         std::printf("Started training loop epoch %d\n", j);
@@ -337,18 +318,7 @@ int main() {
         for(int i = 0; i < training_images.size(); i++) {
             float* image = training_images[i];
             float* look_at = training_poses[i];
-            // Print out the first 12 entries of image and look_at
-            printf("Printing the first 12 entries of image:\n");
-            for (int i = 0; i < 12; i++) {
-                printf("%f ", image[i]);
-            }
-            printf("\n");
             
-            printf("Printing the first 12 entries of look_at:\n");
-            for (int i = 0; i < 12; i++) {
-                printf("%f ", look_at[i]);
-            }
-            printf("\n");
             
             // transfer image and look_at to GPU
             CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, inference));
@@ -481,9 +451,10 @@ int main() {
                     batch_size * n_output_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
             }
-            // print radiance buffer values
-            // print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
-            // CUDA_CHECK(cudaDeviceSynchronize());
+            //print radiance buffer values
+            printf("Printing radiance buffer values\n");
+            print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
+            CUDA_CHECK(cudaDeviceSynchronize());
 
             // Launch Volume Rendering kernel
             printf("Launching Volume Rendering Kernel\n");
@@ -500,22 +471,11 @@ int main() {
                 samples_per_intersect,
                 d_pixels
             );
-            printf("Finished Volume Rendering Kernel\n");
+            
             printf("Printing pixels\n");
             print_float3_arr<<<1,1>>>(d_pixels, width * height);
             CUDA_CHECK(cudaDeviceSynchronize());
-            // Write d_pixels to an image named "test" in PNG format using stb
-            // float* h_pixels = (float*)malloc(height*width * sizeof(float3));
-            // CUDA_CHECK(cudaMemcpy(
-            //     h_pixels,
-            //     d_pixels,
-            //     height*width * sizeof(float3),
-            //     cudaMemcpyDeviceToHost));
-            // stbi_write_png("test.png", width, height, 3, h_pixels, width);
-
-            // printf("Printing target image\n");
-            // print_float4_arr<<<1,1>>>(d_image, width * height);
-            // CUDA_CHECK(cudaDeviceSynchronize());
+            
 
             
             
