@@ -52,11 +52,11 @@ __global__ void volrender_cuda(
             color.y = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 1];
             color.z = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 2];
             sigma = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 3];
-            if(ray_idx % 10000 == 0 && i == 0) {
-                printf("ray idx: %d, sigma: %f\n", ray_idx, sigma);
-                //print color
-                printf("ray idx: %d, color: %f, %f, %f\n", ray_idx, color.x, color.y, color.z);
-            }
+            // if(ray_idx % 100000 == 0 && i == 0) {
+            //     printf("ray idx: %d, sigma: %f\n", ray_idx, sigma);
+            //     //print color
+            //     printf("ray idx: %d, color: %f, %f, %f\n", ray_idx, color.x, color.y, color.z);
+            // }
             // apply softplus function to sigma
             sigma = logf(1 + exp(sigma));
             
@@ -64,14 +64,18 @@ __global__ void volrender_cuda(
             color.x = 1 / (1 + exp(-color.x));
             color.y = 1 / (1 + exp(-color.y));
             color.z = 1 / (1 + exp(-color.z));
-            if(ray_idx % 10000 == 0 && i == 0) {
-                printf("ray idx: %d, post sigma: %f\n", ray_idx, sigma);
-                //print color
-                printf("ray idx: %d, post color: %f, %f, %f\n", ray_idx, color.x, color.y, color.z);
-            }
+            // if(ray_idx % 100000 == 0 && i == 0) {
+            //     printf("ray idx: %d, post sigma: %f\n", ray_idx, sigma);
+            //     //print color
+            //     printf("ray idx: %d, post color: %f, %f, %f\n", ray_idx, color.x, color.y, color.z);
+            // }
             t = ray_hit[(start_index + j) * num_samples_per_hit + i];
             float delta = t - t_initial;
             t_initial = t;
+            if(t < 0) {
+                printf("ray idx: %d, t: %f\n", ray_idx, t);
+            }
+
             transmittance += delta * sigma;
             color.x = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.x;
             color.y = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.y;

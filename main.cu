@@ -476,6 +476,33 @@ int main() {
             print_float3_arr<<<1,1>>>(d_pixels, width * height);
             CUDA_CHECK(cudaDeviceSynchronize());
             
+            // initialize host pixels
+            float* h_pixels = new float[width * height * 3];
+            // copy pixels to host
+            CUDA_CHECK(cudaMemcpy(
+                h_pixels,
+                d_pixels,
+                width * height * sizeof(float) * 3,
+                cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaDeviceSynchronize());
+
+            // save pixels to png file with stb
+            stbi_write_png("output.png", width, height, 3, h_pixels, width);
+            // compute min, max and avg pixel value in h_pixels
+            float min = 1000000000;
+            float max = -1000000000;
+            float avg = 0;
+            for(int i = 0; i < width * height * 3; i++) {
+                if(h_pixels[i] < min) {
+                    min = h_pixels[i];
+                }
+                if(h_pixels[i] > max) {
+                    max = h_pixels[i];
+                }
+                avg += h_pixels[i];
+            }
+            avg /= width * height * 3;
+            printf("min: %f, max: %f, avg: %f\n", min, max, avg);
 
             
             
