@@ -59,7 +59,7 @@ nlohmann::json config = {
 	{"network", {
 		{"otype", "FullyFusedMLP"},
 		{"activation", "ReLU"},
-		{"output_activation", "None"},
+		{"output_activation", "Sigmoid"},
 		{"n_neurons", 128},
 		{"n_hidden_layers", 8}
 	}}

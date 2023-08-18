@@ -36,7 +36,8 @@ __global__ void volrender_cuda(
     int start_index = indices[ray_idx];
     int num_ray_hits = num_hits[ray_idx];
     float transmittance = 0.0f;
-    float t_initial = 0;
+    float t_initial = 0.0f;
+    float t = 0.0f;
     float3 accum_color;
     accum_color.x = 0.0f;
     accum_color.y = 0.0f;
@@ -46,35 +47,16 @@ __global__ void volrender_cuda(
         for(int i = 0; i < num_samples_per_hit; i++) {
             float3 color;
             float sigma;
-            float t;
 
             color.x = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4];
             color.y = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 1];
             color.z = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 2];
             sigma = network_outputs[(start_index + j) * num_samples_per_hit * 4 + i * 4 + 3];
-            // if(ray_idx % 100000 == 0 && i == 0) {
-            //     printf("ray idx: %d, sigma: %f\n", ray_idx, sigma);
-            //     //print color
-            //     printf("ray idx: %d, color: %f, %f, %f\n", ray_idx, color.x, color.y, color.z);
-            // }
-            // apply softplus function to sigma
-            sigma = logf(1 + exp(sigma));
             
-            // apply sigmoid function to color
-            color.x = 1 / (1 + exp(-color.x));
-            color.y = 1 / (1 + exp(-color.y));
-            color.z = 1 / (1 + exp(-color.z));
-            // if(ray_idx % 100000 == 0 && i == 0) {
-            //     printf("ray idx: %d, post sigma: %f\n", ray_idx, sigma);
-            //     //print color
-            //     printf("ray idx: %d, post color: %f, %f, %f\n", ray_idx, color.x, color.y, color.z);
-            // }
             t = ray_hit[(start_index + j) * num_samples_per_hit + i];
-            float delta = t - t_initial;
+            float delta = abs(t - t_initial); // FIXME T should not be zero after the first hit
             t_initial = t;
-            if(t < 0) {
-                printf("ray idx: %d, t: %f\n", ray_idx, t);
-            }
+            
 
             transmittance += delta * sigma;
             color.x = exp(-transmittance) * (1 - exp(-delta * sigma)) * color.x;
