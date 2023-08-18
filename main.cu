@@ -165,6 +165,13 @@ __global__ void print_intersections(float3* start, float3* end, int* num_hits, i
     }
 }
 
+__global__ void convertHalfToFloat(__half* input, float* output, int size) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size) {
+        output[tid] = __half2float(input[tid]);
+    }
+}
+
 __global__ void print_int_arr(int* arr, int width, int height) {
     printf("Printing int array\n");
     for (int i = 0; i < 10; ++i) {
@@ -172,6 +179,14 @@ __global__ void print_int_arr(int* arr, int width, int height) {
             printf("%d ", arr[i * width + j]);
         }
         printf("\n");
+    }
+    printf("\n");
+}
+
+__global__ void print_float_arr(float* arr, int size) {
+    printf("Printing float array\n");
+    for (int i = 0; i < 10; ++i) {
+        printf("%f ", arr[i]);
     }
     printf("\n");
 }
@@ -296,12 +311,14 @@ int main() {
     int *d_num_hits;
     float2 *d_view_dir;
     float3* d_pixels;
+    float* d_temp_out;
     
     CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
     CUDA_CHECK(cudaMalloc((void **)&d_view_dir, width * height * sizeof(float2)));
+    CUDA_CHECK(cudaMalloc((void **)&d_temp_out, batch_size * n_output_dims * sizeof(float)));
     std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
 
     
@@ -429,13 +446,9 @@ int main() {
             // print_float3_arr<<<1,1>>>(d_end_points, width * height * grid_resolution * 3);
             // CUDA_CHECK(cudaDeviceSynchronize());
             
-            // turn d_sampled_points into tcnn input
-            size_t free_byte, total_byte;
-            printf("GPU Memory Usage Before Inference\n");
-            CUDA_CHECK(cudaMemGetInfo(&free_byte, &total_byte));
-            printf("Free: %ld, Total: %ld\n", free_byte, total_byte);
+            uint32_t padded_output_width = model.network->padded_output_width();
             tcnn::GPUMatrix<float> input_batch(n_input_dims, batch_size);
-            tcnn::GPUMatrix<float> output_batch(n_output_dims, batch_size);
+            tcnn::GPUMatrix<tcnn::network_precision_t> output_fwd(padded_output_width, batch_size);
 
             for(int i = 0; i < num_sampled_points; i+=batch_size) {
                 unsigned int offset = i * n_input_dims;
@@ -444,10 +457,18 @@ int main() {
                     d_sampled_points + offset,
                     batch_size * n_input_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
-                model.network->inference(inference, input_batch, output_batch);
+                
+                auto ctx = model.network->forward(inference, input_batch, &output_fwd, true);
+                tcnn::GPUMatrix<tcnn::network_precision_t> output_slice = output_fwd.slice_rows(0, n_output_dims);
+                // convert output_fwd to float
+                int num_el = output_fwd.n_elements();
+                int blockSize = 256;
+                int numBlocks = (num_el + blockSize - 1) / blockSize;
+                convertHalfToFloat<<<numBlocks,blockSize>>>(output_slice.data(), d_temp_out, batch_size * n_output_dims);
+                CUDA_CHECK(cudaDeviceSynchronize());
                 CUDA_CHECK(cudaMemcpy(
                     d_sampled_points_radiance + i * 4,
-                    output_batch.data(),
+                    d_temp_out,
                     batch_size * n_output_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
             }
