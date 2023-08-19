@@ -9,4 +9,4 @@ void launch_volrender_cuda(
     int width,
     int height,
     int num_samples_per_hit,
-    float3* pixels);
+    float* pixels);

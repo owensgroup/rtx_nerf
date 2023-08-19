@@ -22,6 +22,7 @@
 #include "tiny-cuda-nn/common.h"
 #include "tiny-cuda-nn/gpu_matrix.h"
 #include "tiny-cuda-nn/config.h"
+#include "tiny-cuda-nn/reduce_sum.h"
 #include <json/json.h>
 #include "rtx/include/params.h"
 #include "rtx/include/rtxFunctions.h"
@@ -65,7 +66,31 @@ nlohmann::json config = {
 	}}
 };
 
+template<typename T>
+void printGPUMatrix(
+    const tcnn::GPUMatrix<T>& matrix,
+    int n_rows, int n_cols) {
+    // Get the dimensions of the matrix
+    uint32_t rows = matrix.rows();
+    uint32_t cols = matrix.cols();
 
+    // Allocate host memory to store the matrix data
+    T* hostData = new T[rows * cols];
+
+    // Copy the matrix data from GPU to host
+    cudaMemcpy(hostData, matrix.data(), sizeof(T) * rows * cols, cudaMemcpyDeviceToHost);
+
+    // Print the matrix values
+    for (uint32_t i = 0; i < n_rows; i++) {
+        for (uint32_t j = 0; j < n_cols; j++) {
+            std::cout << hostData[i * cols + j] << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    // Free the host memory
+    delete[] hostData;
+}
 
 __global__ void printFloats(float* gpuPointer, int size)
 {
@@ -169,6 +194,13 @@ __global__ void convertHalfToFloat(__half* input, float* output, int size) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < size) {
         output[tid] = __half2float(input[tid]);
+    }
+}
+
+__global__ void floatToHalf(float* input, __half* output, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        output[idx] = __float2half(input[idx]);
     }
 }
 
@@ -310,15 +342,16 @@ int main() {
     float3 *d_end_points;
     int *d_num_hits;
     float2 *d_view_dir;
-    float3* d_pixels;
+    float* d_pixels;
     float* d_temp_out;
-    
-    CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float3)));
+    tcnn::network_precision_t* d_pixels_half;
+    CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float) * 3));
     CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
     CUDA_CHECK(cudaMalloc((void **)&d_view_dir, width * height * sizeof(float2)));
     CUDA_CHECK(cudaMalloc((void **)&d_temp_out, batch_size * n_output_dims * sizeof(float)));
+    CUDA_CHECK(cudaMalloc((void **)&d_pixels_half, width * height * sizeof(tcnn::network_precision_t) * 3));
     std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
 
     
@@ -449,8 +482,9 @@ int main() {
             uint32_t padded_output_width = model.network->padded_output_width();
             tcnn::GPUMatrix<float> input_batch(n_input_dims, batch_size);
             tcnn::GPUMatrix<tcnn::network_precision_t> output_fwd(padded_output_width, batch_size);
-
+            int num_iters = 0;
             for(int i = 0; i < num_sampled_points; i+=batch_size) {
+                num_iters++;
                 unsigned int offset = i * n_input_dims;
                 CUDA_CHECK(cudaMemcpy(
                     input_batch.data(),
@@ -493,9 +527,6 @@ int main() {
                 d_pixels
             );
             
-            printf("Printing pixels\n");
-            print_float3_arr<<<1,1>>>(d_pixels, width * height);
-            CUDA_CHECK(cudaDeviceSynchronize());
             
             // initialize host pixels
             float* h_pixels = new float[width * height * 3];
@@ -506,30 +537,23 @@ int main() {
                 width * height * sizeof(float) * 3,
                 cudaMemcpyDeviceToHost));
             CUDA_CHECK(cudaDeviceSynchronize());
-
+            
             // save pixels to png file with stb
             stbi_write_png("output.png", width, height, 3, h_pixels, width);
-            // compute min, max and avg pixel value in h_pixels
-            float min = 1000000000;
-            float max = -1000000000;
-            float avg = 0;
-            for(int i = 0; i < width * height * 3; i++) {
-                if(h_pixels[i] < min) {
-                    min = h_pixels[i];
-                }
-                if(h_pixels[i] > max) {
-                    max = h_pixels[i];
-                }
-                avg += h_pixels[i];
-            }
-            avg /= width * height * 3;
-            printf("min: %f, max: %f, avg: %f\n", min, max, avg);
+            size_t bufferSize = width * height * channels;
+            int blockSize = 256;
+            int numBlocks = (bufferSize + blockSize - 1) / blockSize;
+            floatToHalf<<<numBlocks, blockSize>>>(d_pixels, d_pixels_half, bufferSize);
+            cudaDeviceSynchronize();
+            tcnn::GPUMatrix<tcnn::network_precision_t> predicted_image(d_pixels_half, width * height, channels);
 
-            
-            
             // tcnn compute loss and backpropagate
-            tcnn::GPUMatrix<float> target_image(d_image, width, height, channels);
-
+            tcnn::GPUMatrix<float> target_image(d_image, width * height, channels);
+            tcnn::GPUMatrix<float> values(width * height, channels);
+            tcnn::GPUMatrix<tcnn::network_precision_t> gradients(width * height, channels);
+            model.loss->evaluate(1.0f, predicted_image, target_image, values, gradients);
+            float image_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference);
+            std::cout << "Image Loss: " << image_loss << std::endl;
 	    break;
         }
         break;

@@ -25,7 +25,7 @@ __global__ void volrender_cuda(
     int width,
     int height,
     int num_samples_per_hit,
-    float3* pixels) {
+    float* pixels) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
     if(x >= width || y >= height) {
@@ -68,7 +68,9 @@ __global__ void volrender_cuda(
             accum_color.z += color.z;
         }
     }
-    pixels[ray_idx] = accum_color;
+    pixels[ray_idx*3] = accum_color.x;
+    pixels[ray_idx*3+1] = accum_color.y;
+    pixels[ray_idx*3+2] = accum_color.z;
 }
 
 void launch_volrender_cuda(
@@ -80,7 +82,7 @@ void launch_volrender_cuda(
     int width,
     int height,
     int num_samples_per_hit,
-    float3* pixels) {
+    float* pixels) {
     dim3 threadsPerBlock(32, 32);
     dim3 numBlocks((width + threadsPerBlock.x - 1) / threadsPerBlock.x,
                    (height + threadsPerBlock.y - 1) / threadsPerBlock.y);
