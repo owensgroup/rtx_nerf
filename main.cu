@@ -303,10 +303,10 @@ int main() {
     // We also build our initial dense acceleration structure of AABBs
 
     std::cout << "---------------------- Initializing Optix ----------------------\n";
-    cudaStream_t inference;
-    cudaStream_t training;
-    CUDA_CHECK(cudaStreamCreate(&inference));
-    CUDA_CHECK(cudaStreamCreate(&training));
+    cudaStream_t inference_stream;
+    cudaStream_t training_stream;
+    CUDA_CHECK(cudaStreamCreate(&inference_stream));
+    CUDA_CHECK(cudaStreamCreate(&training_stream));
     std::string ptx_filename = BUILD_DIR "bin/ptx/optixPrograms.ptx";
 
     rtx_dataholder = new RTXDataHolder();
@@ -371,8 +371,8 @@ int main() {
             
             
             // transfer image and look_at to GPU
-            CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, inference));
-            CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, inference));
+            CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, inference_stream));
+            CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, inference_stream));
 
             // Memset ray intersection buffers
             CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
@@ -404,10 +404,10 @@ int main() {
             CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
             const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
             std::cout << "Launching Ray Tracer in Ray Marching Mode (" << width*height << " rays)\n";
-            OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, inference,
+            OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, inference_stream,
                                     reinterpret_cast<CUdeviceptr>(d_param),
                                     sizeof(Params), &sbt_ray_march, width, height, 1));
-            CUDA_CHECK(cudaStreamSynchronize(inference));
+            CUDA_CHECK(cudaStreamSynchronize(inference_stream));
 
             // CUDA Launch Sampling Kernel given entry and exit points from this perspective
             d_start_points = params.start_points;
@@ -469,7 +469,7 @@ int main() {
                 d_sampled_points,
                 width, height, grid_resolution,
                 d_num_hits, d_hit_inds, 
-                SAMPLING_REGULAR, inference
+                SAMPLING_REGULAR, inference_stream
             );
             CUDA_CHECK(cudaDeviceSynchronize());
             // print_float5_arr<<<1,1>>>(d_sampled_points, num_sampled_points);
@@ -492,7 +492,7 @@ int main() {
                     batch_size * n_input_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
                 
-                auto ctx = model.network->forward(inference, input_batch, &output_fwd, true);
+                auto ctx = model.network->forward(inference_stream, input_batch, &output_fwd, true);
                 tcnn::GPUMatrix<tcnn::network_precision_t> output_slice = output_fwd.slice_rows(0, n_output_dims);
                 // convert output_fwd to float
                 int num_el = output_fwd.n_elements();
@@ -552,8 +552,10 @@ int main() {
             tcnn::GPUMatrix<float> values(width * height, channels);
             tcnn::GPUMatrix<tcnn::network_precision_t> gradients(width * height, channels);
             model.loss->evaluate(1.0f, predicted_image, target_image, values, gradients);
-            float image_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference);
+            float image_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference_stream);
             std::cout << "Image Loss: " << image_loss << std::endl;
+
+            
 	    break;
         }
         break;
