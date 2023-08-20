@@ -554,8 +554,9 @@ int main() {
             model.loss->evaluate(1.0f, predicted_image, target_image, values, gradients);
             float image_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference_stream);
             std::cout << "Image Loss: " << image_loss << std::endl;
-
             
+                
+
 	    break;
         }
         break;
