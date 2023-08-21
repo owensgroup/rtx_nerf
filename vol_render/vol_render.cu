@@ -80,6 +80,8 @@ __global__ void volrender_backward_cuda(
     float* t_hit,
     int* num_hits,
     int* indices,
+    int width,
+    int height,
     int num_samples_per_hit,
     __half* radiance_gradients
 ) {
@@ -97,7 +99,7 @@ __global__ void volrender_backward_cuda(
     float t_initial = 0.0f;
     float t = 0.0f;
 
-    for(int j = 0; j < num_ray_hits; i++) {
+    for(int j = 0; j < num_ray_hits; j++) {
         #pragma unroll
         for(int i = 0; i < num_samples_per_hit; i++) {
             float3 color;
@@ -123,11 +125,11 @@ __global__ void volrender_backward_cuda(
             loss_gradient.z = __half2float(loss_gradients[ray_idx * 3 + 2]);
             
             // compute gradient for density
-            // we compute the gradient for the density for each color channel, then average them
+            // we compute the gradient for the density for each color channel and sum them
             density_gradient += loss_gradient.x * transmittance * color.x * delta * exp(-sigma * delta);
             density_gradient += loss_gradient.y * transmittance * color.y * delta * exp(-sigma * delta);
             density_gradient += loss_gradient.z * transmittance * color.z * delta * exp(-sigma * delta);
-            density_gradient /= 3.0f;
+            
 
             // compute gradient for color
             color_gradient.x = loss_gradient.x * transmittance * (1 - exp(-delta * sigma));
@@ -168,6 +170,29 @@ void launch_volrender_cuda(
 
 void launch_volrender_backward_cuda(
     float* loss_values,
-    float* loss_gradients,
-
-)
+    __half* loss_gradients,
+    float* sampled_points_radiance,
+    float* t_hit,
+    int* num_hits,
+    int* indices,
+    int width,
+    int height,
+    int num_samples_per_hit,
+    __half* radiance_gradients
+) {
+    dim3 threadsPerBlock(32, 32);
+    dim3 numBlocks((width + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                   (height + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    volrender_backward_cuda<<<numBlocks, threadsPerBlock>>>(
+        loss_values,
+        loss_gradients,
+        sampled_points_radiance,
+        t_hit,
+        num_hits,
+        indices,
+        width,
+        height,
+        num_samples_per_hit,
+        radiance_gradients
+    );
+}

@@ -170,6 +170,14 @@ std::vector<OptixAabb> make_grid(int resolution) {
     }
     return grid;
 }
+
+void printGPUMem() {
+    size_t freeMem, totalMem;
+    cudaMemGetInfo(&freeMem, &totalMem);
+    size_t usedMem = totalMem - freeMem;
+    std::cout << "GPU Memory Usage: " << usedMem / 1024 / 1024 << " MB" << std::endl;
+}
+
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
@@ -482,9 +490,10 @@ int main() {
             uint32_t padded_output_width = model.network->padded_output_width();
             tcnn::GPUMatrix<float> input_batch(n_input_dims, batch_size);
             tcnn::GPUMatrix<tcnn::network_precision_t> output_fwd(padded_output_width, batch_size);
-            int num_iters = 0;
+            std::vector<std::unique_ptr<tcnn::Context>> contexts;
+            printGPUMem();
             for(int i = 0; i < num_sampled_points; i+=batch_size) {
-                num_iters++;
+                
                 unsigned int offset = i * n_input_dims;
                 CUDA_CHECK(cudaMemcpy(
                     input_batch.data(),
@@ -492,11 +501,14 @@ int main() {
                     batch_size * n_input_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
                 
+                
                 auto ctx = model.network->forward(inference_stream, input_batch, &output_fwd, true);
+                contexts.push_back(std::move(ctx));
                 tcnn::GPUMatrix<tcnn::network_precision_t> output_slice = output_fwd.slice_rows(0, n_output_dims);
+
                 // convert output_fwd to float
                 int num_el = output_fwd.n_elements();
-                int blockSize = 256;
+                int blockSize = 1024;
                 int numBlocks = (num_el + blockSize - 1) / blockSize;
                 convertHalfToFloat<<<numBlocks,blockSize>>>(output_slice.data(), d_temp_out, batch_size * n_output_dims);
                 CUDA_CHECK(cudaDeviceSynchronize());
@@ -505,7 +517,9 @@ int main() {
                     d_temp_out,
                     batch_size * n_output_dims * sizeof(float),
                     cudaMemcpyDeviceToDevice));
+                
             }
+            printGPUMem();
             //print radiance buffer values
             printf("Printing radiance buffer values\n");
             print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
@@ -555,7 +569,22 @@ int main() {
             float image_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference_stream);
             std::cout << "Image Loss: " << image_loss << std::endl;
             
-                
+            tcnn::network_precision_t* d_loss_mlp;
+            CUDA_CHECK(cudaMalloc((void**)&d_loss_mlp, sizeof(tcnn::network_precision_t) * 16 * num_sampled_points));
+            launch_volrender_backward_cuda(
+                values.data(),
+                gradients.data(),
+                d_sampled_points_radiance,
+                d_t_vals,
+                d_num_hits,
+                d_hit_inds,
+                width,
+                height,
+                samples_per_intersect,
+                d_loss_mlp
+            );
+
+
 
 	    break;
         }
