@@ -11,13 +11,11 @@
 // each thread will read from num_hits
 // each thread will compute samples for num_hits points
 // start_points and end_points are the same size [width, height, grid_res * 3]
-
 __global__ void generate_samples(
     float3* start_points,
     float3* end_points,
     float2* view_dirs,
-    int width,
-    int height,
+    int batch_size,
     int grid_res,
     int* num_hits,
     int* indices,
@@ -28,21 +26,21 @@ __global__ void generate_samples(
 {
     // Get index for this ray
     int x = threadIdx.x + blockDim.x * blockIdx.x;
-    int y = threadIdx.y + blockDim.y * blockIdx.y;
+    
+    
     // get the viewing direction for this ray
-    int start_index = indices[y * width + x];
-    float2 view_dir = view_dirs[y * width + x];
+    int start_index = indices[x];
+    int n_hits = num_hits[x];
+    float2 view_dir = view_dirs[x];
     float theta = view_dir.x;
     float phi = view_dir.y;
-
-    if(x < width && y < height) {
-        for(int j = 0; j < num_hits[y * width + x]; j++) {
+    if(x < batch_size) {
+        for(int j = 0; j < n_hits; j++) {
             // grab the start and end points for this segment
             // start and end points have size [width, height, grid_res * 3]
             // find the start and end points for this thread
-            int idx = (y * width * grid_res * 3) + (x * grid_res * 3) + j;
-            float3 origin = start_points[idx];
-            float3 finish = end_points[idx];
+            float3 origin = start_points[start_index + j];
+            float3 finish = end_points[start_index + j];
             float3 direction;
             direction.x = finish.x - origin.x;
             direction.y = finish.y - origin.y;
@@ -59,15 +57,15 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    // printf("Thread %d, Writing to sample index %d\n", y*width+x, ((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5);
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
                     samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
-                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
                     t_initial += 1.0f / NUM_SAMPLES_PER_SEGMENT;
-                } else if (sample_type == SAMPLING_UNIFORM) {
+                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
+                } 
+                else if (sample_type == SAMPLING_UNIFORM) {
                     thrust::uniform_real_distribution<float> dist(0,1);
                     float t = dist(rng);
                     t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
@@ -100,7 +98,6 @@ __global__ void generate_samples(
                     t_final += 1.0f / NUM_SAMPLES_PER_SEGMENT;
                 }
             }
-    
         }
     }
 }
@@ -111,25 +108,21 @@ void launchSampler(
     float2* d_view_dirs,
     float* d_t_vals,
     float* d_sampled_points,
-    unsigned int width, 
-    unsigned int height,
+    int batch_size,
     int grid_res,
     int* d_num_hits,
     int* d_indices,
     SAMPLING_TYPE sample_type, 
     cudaStream_t& stream) {
         thrust::minstd_rand rng;
-        dim3 block(BLOCK_SIZE, BLOCK_SIZE);
-        dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+        dim3 block(1024);
+        dim3 grid((batch_size + block.x - 1) / block.x);
         generate_samples<<<grid, block,0,stream>>>(
             d_start_points,
             d_end_points,
             d_view_dirs,
-            width,
-            height,
-            grid_res,
-            d_num_hits,
-            d_indices,
+            batch_size, grid_res,
+            d_num_hits, d_indices,
             sample_type,
             d_sampled_points,
             d_t_vals,

@@ -79,6 +79,7 @@ extern "C" __global__ void __raygen__ray_march() {
   float tmin = 0.0f;
   float tmax = (max_point.z - min_point.z) + 100.0;
   float ray_time = 0.0f;
+  params.ray_origins[ray_idx] = make_float3(xo, yo, zo);
   // Visibility mask is used to mask out objects from rays
   // for each part of the scene, a mask is assigned and when
   // the ray intersects a bitwise and is performed 
@@ -180,11 +181,12 @@ extern "C" __global__ void __closesthit__ray_march() {
   // For every closest hit, grab the entry and exit point for the ray
   const uint3 launch_index = optixGetLaunchIndex();
   unsigned int ray_idx = launch_index.x + launch_index.y * params.width;
+  unsigned int idx = params.num_hits[ray_idx] + ray_idx * params.intersection_arr_size;
   // get the optixAabb that we currenty intersected with
   uint primitiveIndex = optixGetPrimitiveIndex();
   //float t_min = optixGetRayTmin();
   float t_hit = optixGetRayTmax(); // t_max returns smallest reported hitT
-
+  params.t_start[idx] = t_hit;
   // compute the ray entry point from t_min
   float3 ray_direction = optixGetWorldRayDirection();
   float3 ray_origin = optixGetWorldRayOrigin();
@@ -229,10 +231,12 @@ extern "C" __global__ void __closesthit__ray_march() {
   // store the entry and exit points of this ray in this AABB in param buffers
   // entry_points is an array with dimension [H, W, numPrimitives]
   // exit_points is an array with dimension [H, W, numPrimitives]
-  unsigned int idx = params.num_hits[ray_idx] + ray_idx * params.intersection_arr_size;
+  
   params.start_points[idx] = start;
   params.end_points[idx] = end;
-
+  
+  
+  params.t_end[idx] = t_e;
   // update the number of intersections for this ray
   params.num_hits[ray_idx] += 1;
 

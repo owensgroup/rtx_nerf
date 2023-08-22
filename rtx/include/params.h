@@ -23,8 +23,13 @@ struct Params {
     // H is height of the image
     float3* start_points; // store the start points of each ray
     float3* end_points; // store the end points of each ray
+
+    float3* ray_origins;
     // store the number of intersections with AABBs per ray (<= num_primitives per ray)
     // we'll use this to gather the intersections for each ray
+    float* t_start;
+    float* t_end;
+    
     int* num_hits;
     float2* viewing_direction;
     float focal_length;

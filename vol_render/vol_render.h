@@ -8,8 +8,7 @@ void launch_volrender_cuda(
     int* num_hits,
     int* indices,
     float* ray_hit,
-    int width,
-    int height,
+    int batch_size,
     int num_samples_per_hit,
     float* pixels);
 
@@ -20,8 +19,7 @@ void launch_volrender_backward_cuda(
     float* t_hit,
     int* num_hits,
     int* indices,
-    int width,
-    int height,
+    int batch_size,
     int num_samples_per_hit,
     __half* radiance_gradients
 );
