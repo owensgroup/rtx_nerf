@@ -34,13 +34,11 @@ __global__ void generate_samples(
     float2 view_dir = view_dirs[x];
     float theta = view_dir.x;
     float phi = view_dir.y;
-
     if(x < batch_size) {
         for(int j = 0; j < n_hits; j++) {
             // grab the start and end points for this segment
             // start and end points have size [width, height, grid_res * 3]
             // find the start and end points for this thread
-            
             float3 origin = start_points[start_index + j];
             float3 finish = end_points[start_index + j];
             float3 direction;
@@ -59,48 +57,46 @@ __global__ void generate_samples(
                     sample.x = t * direction.x + origin.x;
                     sample.y = t * direction.y + origin.y;
                     sample.z = t * direction.z + origin.z;
-                    samples[0] = sample.x;
-                    // printf("Thread %d, Writing to sample index %d\n", y*width+x, ((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5);
-                    // samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
-                    // samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
-                    // samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
-                    // samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
-                    // samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
-                    // t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
-                    // t_initial += 1.0f / NUM_SAMPLES_PER_SEGMENT;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
+                    t_initial += 1.0f / NUM_SAMPLES_PER_SEGMENT;
+                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
                 } 
-                // else if (sample_type == SAMPLING_UNIFORM) {
-    //                 thrust::uniform_real_distribution<float> dist(0,1);
-    //                 float t = dist(rng);
-    //                 t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
-    //                 float3 sample = origin;
-    //                 sample.x = t * direction.x + origin.x;
-    //                 sample.y = t * direction.y + origin.y;
-    //                 sample.z = t * direction.z + origin.z;
+                else if (sample_type == SAMPLING_UNIFORM) {
+                    thrust::uniform_real_distribution<float> dist(0,1);
+                    float t = dist(rng);
+                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
+                    float3 sample = origin;
+                    sample.x = t * direction.x + origin.x;
+                    sample.y = t * direction.y + origin.y;
+                    sample.z = t * direction.z + origin.z;
                     
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
-    //             } else if (sample_type == SAMPLING_STRATIFIED_JITTERING) {
-    //                 thrust::uniform_real_distribution<float> dist(t_initial, t_final);
-    //                 float t = dist(rng);
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;
+                } else if (sample_type == SAMPLING_STRATIFIED_JITTERING) {
+                    thrust::uniform_real_distribution<float> dist(t_initial, t_final);
+                    float t = dist(rng);
 
-    //                 float3 sample = origin;
-    //                 sample.x = t * direction.x + origin.x;
-    //                 sample.y = t * direction.y + origin.y;
-    //                 sample.z = t * direction.z + origin.z;
+                    float3 sample = origin;
+                    sample.x = t * direction.x + origin.x;
+                    sample.y = t * direction.y + origin.y;
+                    sample.z = t * direction.z + origin.z;
 
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
-    //                 samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;            
-    //                 t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
-    //                 t_initial = t_final;
-    //                 t_final += 1.0f / NUM_SAMPLES_PER_SEGMENT;
-    //             }
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5] = sample.x;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 1] = sample.y;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 2] = sample.z;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 3] = theta;
+                    samples[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i) * 5 + 4] = phi;            
+                    t_vals[((start_index + j) * NUM_SAMPLES_PER_SEGMENT + i)] = t_initial;
+                    t_initial = t_final;
+                    t_final += 1.0f / NUM_SAMPLES_PER_SEGMENT;
+                }
             }
         }
     }

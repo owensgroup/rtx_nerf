@@ -181,7 +181,7 @@ void printGPUMem() {
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
-#define BATCH_SIZE tcnn::batch_size_granularity*256
+#define BATCH_SIZE tcnn::BATCH_SIZE_GRANULARITY
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
@@ -250,12 +250,12 @@ __global__ void print_float2_arr(float2* arr, int width, int height) {
 
 __global__ void print_float5_arr(float* arr, int size) {
     printf("Printing first 32 points \n");
-    for(int i = 0; i < 32; ++i) {
+    for(int i = 0; i < 64; ++i) {
         printf("%f %f %f %f %f\n", arr[i*5], arr[i*5+1], arr[i*5+2], arr[i*5+3], arr[i*5+4]);
     }
     printf("\n");
     printf("Printing last 32 points \n");
-    for(int i = size-32; i < size; ++i) {
+    for(int i = size-64; i < size; ++i) {
         printf("%f %f %f %f %f\n", arr[i*5], arr[i*5+1], arr[i*5+2], arr[i*5+3], arr[i*5+4]);
     }
     printf("\n");
@@ -435,7 +435,6 @@ int main() {
         CUDA_CHECK(cudaMemsetAsync(d_num_hits, 0, width * height * sizeof(int)));
 
         Params params;
-        // params.transform_matrix = transform_matrix;
         float d =  2.0f / grid_resolution;
         params.delta = make_float3(d, d, d);
         params.min_point = make_float3(-1, -1, -1);
@@ -594,6 +593,12 @@ int main() {
             thrust::exclusive_scan(dev_ptr_num_hits, dev_ptr_num_hits + batch_size, d_hit_indsV.begin());
             d_batch_num_hits = dev_ptr_num_hits.get();
             d_batch_hit_inds = thrust::raw_pointer_cast(d_hit_indsV.data());
+            // print d_batch_num_hits and d_batch_hit_inds
+            std::cout << "Printing d_batch_num_hits and d_batch_hit_inds \n";
+            print_int_arr<<<1,1>>>(d_batch_num_hits, batch_size);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            print_int_arr<<<1,1>>>(d_batch_hit_inds, batch_size);
+            CUDA_CHECK(cudaDeviceSynchronize());
 
             float3* h_start_points = (float3*)malloc(num_points * sizeof(float3));
             float3* h_end_points = (float3*)malloc(num_points * sizeof(float3));
@@ -638,15 +643,17 @@ int main() {
             unsigned int size_output = num_sampled_points * sizeof(float) * 4;
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_input);
             printf("ALLOCATING %d bytes for radiance (shouldn't be zero) \n", size_output);
-            printGPUMem();
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_input));
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points_radiance,
                         size_output));
-            print_float5_arr<<<1,1>>>(d_sampled_points, num_sampled_points);
-            CUDA_CHECK(cudaDeviceSynchronize());
             CUDA_CHECK(cudaMalloc((void**)&d_t_vals, sizeof(float) * num_sampled_points));
-            CUDA_CHECK(cudaDeviceSynchronize());
-            printGPUMem();
+            
+
+            std::cout << "Printing start_points and end_points \n";
+            // print_float3_arr<<<1,1>>>(d_start_points, num_points);
+            // CUDA_CHECK(cudaDeviceSynchronize());
+            // print_float3_arr<<<1,1>>>(d_end_points, num_points);
+            // CUDA_CHECK(cudaDeviceSynchronize());
 
             std::cout << "Launching Sampling Kernel \n";
             launchSampler(
@@ -658,24 +665,7 @@ int main() {
                 batch_size, grid_resolution,
                 d_batch_num_hits, d_batch_hit_inds,
                 SAMPLING_REGULAR, inference_stream);
-            // launchSampler(
-            //     d_start_points,
-            //     d_end_points,
-            //     d_view_dir,
-            //     d_t_vals,
-            //     d_sampled_points,
-            //     batch_size, grid_resolution,
-            //     d_num_hits, d_batch_hit_inds, 
-            //     SAMPLING_REGULAR, inference_stream
-            // );
-            CUDA_CHECK(cudaDeviceSynchronize());
-            print_float5_arr<<<1,1>>>(d_sampled_points, num_sampled_points);
-            CUDA_CHECK(cudaDeviceSynchronize());
             break;
-            // print_float3_arr<<<1,1>>>(d_start_points, width * height * grid_resolution * 3);
-            // CUDA_CHECK(cudaDeviceSynchronize());
-            // print_float3_arr<<<1,1>>>(d_end_points, width * height * grid_resolution * 3);
-            // CUDA_CHECK(cudaDeviceSynchronize());
             
             uint32_t padded_output_width = model.network->padded_output_width();
             tcnn::GPUMatrix<float> input_batch(n_input_dims, batch_size);
