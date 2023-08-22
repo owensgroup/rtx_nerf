@@ -181,7 +181,7 @@ void printGPUMem() {
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
-#define BATCH_SIZE tcnn::BATCH_SIZE_GRANULARITY*256
+#define BATCH_SIZE tcnn::BATCH_SIZE_GRANULARITY*128
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
@@ -315,7 +315,6 @@ int main() {
     unsigned int width = train_set.image_width;
     unsigned int height = train_set.image_height;
     unsigned int channels = train_set.image_channels;
-    printf("Channels: %i\n", channels);
     float training_focal = train_set.focal;
     float aspect_ratio = (float)width / (float)height;
     float focal_length = 1.0f / tan(0.5f * training_focal);
@@ -496,7 +495,6 @@ int main() {
             payload.pixel_color_gt = make_float3(image[i * 3], image[i * 3 + 1], image[i * 3 + 2]);
             ray_payloads.push_back(payload);
         }
-        break;
     }
     free(h_origin);
     free(h_view_dir);
@@ -516,41 +514,41 @@ int main() {
     std::cout << "---------------------- Done Generating Rays ----------------------\n\n\n";
 
     // Print 10 random payloads from ray_payloads
-    std::cout << "Random Ray Payloads:" << std::endl;
-    for (int i = 0; i < 10; i++) {
-        int random_index = rand() % ray_payloads.size();
-        RayPayload random_payload = ray_payloads[random_index];
-        std::cout << "Payload " << i+1 << ":" << std::endl;
-        std::cout << "Origin: (" << random_payload.origin.x << ", " << random_payload.origin.y << ", " << random_payload.origin.z << ")" << std::endl;
-        std::cout << "View Direction: (" << random_payload.view_dir.x << ", " << random_payload.view_dir.y << ")" << std::endl;
-        std::cout << "Number of Hits: " << random_payload.num_hits << std::endl;
-        std::cout << "T Start: ";
-        for (int j = 0; j < random_payload.num_hits; j++) {
-            std::cout << random_payload.t_start[j] << " ";
-        }
-        std::cout << std::endl;
-        std::cout << "T End: ";
-        for (int j = 0; j < random_payload.num_hits; j++) {
-            std::cout << random_payload.t_end[j] << " ";
-        }
+    // std::cout << "Random Ray Payloads:" << std::endl;
+    // for (int i = 0; i < 10; i++) {
+    //     int random_index = rand() % ray_payloads.size();
+    //     RayPayload random_payload = ray_payloads[random_index];
+    //     std::cout << "Payload " << i+1 << ":" << std::endl;
+    //     std::cout << "Origin: (" << random_payload.origin.x << ", " << random_payload.origin.y << ", " << random_payload.origin.z << ")" << std::endl;
+    //     std::cout << "View Direction: (" << random_payload.view_dir.x << ", " << random_payload.view_dir.y << ")" << std::endl;
+    //     std::cout << "Number of Hits: " << random_payload.num_hits << std::endl;
+    //     std::cout << "T Start: ";
+    //     for (int j = 0; j < random_payload.num_hits; j++) {
+    //         std::cout << random_payload.t_start[j] << " ";
+    //     }
+    //     std::cout << std::endl;
+    //     std::cout << "T End: ";
+    //     for (int j = 0; j < random_payload.num_hits; j++) {
+    //         std::cout << random_payload.t_end[j] << " ";
+    //     }
 
-        // print start and end points
-        std::cout << std::endl;
-        std::cout << "Start Points: ";
-        for (int j = 0; j < random_payload.num_hits; j++) {
-            std::cout << "(" << random_payload.start_points[j].x << ", " << random_payload.start_points[j].y << ", " << random_payload.start_points[j].z << ") ";
-        }
-        std::cout << std::endl;
-        std::cout << "End Points: ";
-        for (int j = 0; j < random_payload.num_hits; j++) {
-            std::cout << "(" << random_payload.end_points[j].x << ", " << random_payload.end_points[j].y << ", " << random_payload.end_points[j].z << ") ";
-        }
+    //     // print start and end points
+    //     std::cout << std::endl;
+    //     std::cout << "Start Points: ";
+    //     for (int j = 0; j < random_payload.num_hits; j++) {
+    //         std::cout << "(" << random_payload.start_points[j].x << ", " << random_payload.start_points[j].y << ", " << random_payload.start_points[j].z << ") ";
+    //     }
+    //     std::cout << std::endl;
+    //     std::cout << "End Points: ";
+    //     for (int j = 0; j < random_payload.num_hits; j++) {
+    //         std::cout << "(" << random_payload.end_points[j].x << ", " << random_payload.end_points[j].y << ", " << random_payload.end_points[j].z << ") ";
+    //     }
 
-        std::cout << std::endl;
-        // print ground truth pixel color
-        std::cout << "Ground Truth Pixel Color: (" << random_payload.pixel_color_gt.x << ", " << random_payload.pixel_color_gt.y << ", " << random_payload.pixel_color_gt.z << ")" << std::endl;
-        std::cout << std::endl << std::endl;
-    }
+    //     std::cout << std::endl;
+    //     // print ground truth pixel color
+    //     std::cout << "Ground Truth Pixel Color: (" << random_payload.pixel_color_gt.x << ", " << random_payload.pixel_color_gt.y << ", " << random_payload.pixel_color_gt.z << ")" << std::endl;
+    //     std::cout << std::endl << std::endl;
+    // }
     
 
     int* h_batch_num_hits = (int*)malloc(batch_size * sizeof(int));
@@ -573,11 +571,11 @@ int main() {
         // Loop through each set of images and poses in our training dataset
         for(int i = 0; i < ray_payloads.size(); i+=batch_size) {
             // get batch_size ray payloads from ray_payloads
-            std::cout << "Getting batch of ray payloads \n";
+            // std::cout << "Getting batch of ray payloads \n";
             std::vector<RayPayload> batch_ray_payloads(ray_payloads.begin() + i, ray_payloads.begin() + i + batch_size);
             // store num_hits in ray payloads in h_batch_num_hits
 
-            std::cout << "Going from AOS to SOA \n";
+            // std::cout << "Going from AOS to SOA \n";
             for(int k = 0; k < batch_size; k++) {
                 h_batch_num_hits[k] = batch_ray_payloads[k].num_hits;
                 h_gt_pixels[k] = batch_ray_payloads[k].pixel_color_gt;
@@ -595,12 +593,13 @@ int main() {
             d_batch_num_hits = dev_ptr_num_hits.get();
             d_batch_hit_inds = thrust::raw_pointer_cast(d_hit_indsV.data());
             // print d_batch_num_hits and d_batch_hit_inds
-            std::cout << "Printing d_batch_num_hits and d_batch_hit_inds \n";
-            print_int_arr<<<1,1>>>(d_batch_num_hits, batch_size);
-            CUDA_CHECK(cudaDeviceSynchronize());
-            print_int_arr<<<1,1>>>(d_batch_hit_inds, batch_size);
-            CUDA_CHECK(cudaDeviceSynchronize());
+            // std::cout << "Printing d_batch_num_hits and d_batch_hit_inds \n";
+            // print_int_arr<<<1,1>>>(d_batch_num_hits, batch_size);
+            // CUDA_CHECK(cudaDeviceSynchronize());
+            // print_int_arr<<<1,1>>>(d_batch_hit_inds, batch_size);
+            // CUDA_CHECK(cudaDeviceSynchronize());
 
+            //free both
             float3* h_start_points = (float3*)malloc(num_points * sizeof(float3));
             float3* h_end_points = (float3*)malloc(num_points * sizeof(float3));
             // float* h_t_end = (float*)malloc(num_points * sizeof(float));
@@ -621,6 +620,7 @@ int main() {
             float3* d_start_points;
             float3* d_end_points;
             // float* d_t_end;
+            //cudafree both
             CUDA_CHECK(cudaMalloc((void **)&d_start_points, num_points * sizeof(float3)));
             CUDA_CHECK(cudaMalloc((void **)&d_end_points, num_points * sizeof(float3)));
             // CUDA_CHECK(cudaMalloc((void **)&d_t_end, num_points * sizeof(float)));
@@ -644,19 +644,20 @@ int main() {
             unsigned int size_output = num_sampled_points * sizeof(float) * 4;
             printf("ALLOCATING %d bytes for samples (shouldn't be zero) \n", size_input);
             printf("ALLOCATING %d bytes for radiance (shouldn't be zero) \n", size_output);
+            // cudafree all of these
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points, size_input));
             CUDA_CHECK(cudaMalloc((void**)&d_sampled_points_radiance,
                         size_output));
             CUDA_CHECK(cudaMalloc((void**)&d_t_vals, sizeof(float) * num_sampled_points));
             
 
-            std::cout << "Printing start_points and end_points \n";
+            // std::cout << "Printing start_points and end_points \n";
             // print_float3_arr<<<1,1>>>(d_start_points, num_points);
             // CUDA_CHECK(cudaDeviceSynchronize());
             // print_float3_arr<<<1,1>>>(d_end_points, num_points);
             // CUDA_CHECK(cudaDeviceSynchronize());
 
-            std::cout << "Launching Sampling Kernel \n";
+            // std::cout << "Launching Sampling Kernel \n";
             launchSampler(
                 d_start_points,
                 d_end_points,
@@ -672,25 +673,25 @@ int main() {
             tcnn::GPUMatrix<float> input_batch(n_input_dims, num_sampled_points);
             tcnn::GPUMatrix<tcnn::network_precision_t> output_fwd(padded_output_width, num_sampled_points);
             
-            printGPUMem();
-            printf("Launching Forward Pass\n");
+            // printGPUMem();
+            // printf("Launching Forward Pass\n");
             auto ctx = model.network->forward(inference_stream, input_batch, &output_fwd, true, true);
-            printf("Done Forward Pass\n");
+            // printf("Done Forward Pass\n");
             tcnn::GPUMatrix<tcnn::network_precision_t> output_slice = output_fwd.slice_rows(0, n_output_dims);
             
             int num_el = output_slice.n_elements();
             int blockSize1 = 1024;
             int numBlocks1 = (num_el + blockSize1 - 1) / blockSize1;
             convertHalfToFloat<<<numBlocks1,blockSize1>>>(output_slice.data(), d_sampled_points_radiance, num_el);
-            //print radiance buffer values
+            // print radiance buffer values
             // printf("Printing radiance buffer values\n");
             // print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
             // CUDA_CHECK(cudaDeviceSynchronize());
             
             // Launch Volume Rendering kernel
-            printf("Launching Volume Rendering Kernel\n");
+            // printf("Launching Volume Rendering Kernel\n");
             
-
+            // TODO: inference stream
             launch_volrender_cuda(
                 d_sampled_points,
                 d_sampled_points_radiance,
@@ -701,11 +702,11 @@ int main() {
                 samples_per_intersect,
                 d_pixels
             );
-            printf("Done Volume Rendering Kernel\n");
+            // printf("Done Volume Rendering Kernel\n");
             // print pixel buffer values
-            printf("Printing pixel buffer values\n");
-            print_float_arr<<<1,1>>>(d_pixels, batch_size);
-            CUDA_CHECK(cudaDeviceSynchronize());
+            // printf("Printing pixel buffer values\n");
+            // print_float_arr<<<1,1>>>(d_pixels, batch_size);
+            // CUDA_CHECK(cudaDeviceSynchronize());
             int blockSize2 = 1024;
             int numBlocks2 = (batch_size + blockSize2 - 1) / blockSize2;
             floatToHalf<<<numBlocks2, blockSize2>>>(d_pixels, d_pixels_half, batch_size);
@@ -732,12 +733,21 @@ int main() {
                 samples_per_intersect,
                 d_loss_mlp
             );
-            printf("Done Volume Rendering Backward Kernel\n");
-            tcnn::GPUMatrix<tcnn::network_precision_t> loss_mlp(d_loss_mlp, num_sampled_points, 16);
-            model.network->backward(ctx, input_batch, output_fwd, loss_mlp);
-
-
-	    break;
+            // printf("Done Volume Rendering Backward Kernel\n");
+            tcnn::GPUMatrix<tcnn::network_precision_t> loss_mlp(d_loss_mlp, 16, num_sampled_points);
+            model.network->backward(inference_stream, *ctx, input_batch, output_fwd, loss_mlp);
+            printGPUMem();
+            // free buffers
+            cudaFree(d_sampled_points);
+            cudaFree(d_sampled_points_radiance);
+            cudaFree(d_t_vals);
+            cudaFree(d_start_points);
+            cudaFree(d_end_points);
+            cudaFree(d_loss_mlp);
+            free(h_start_points);
+            free(h_end_points);
+            // std::cout << "Done freeing buffers \n";
+            printGPUMem();
         }
         break;
     }
