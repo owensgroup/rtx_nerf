@@ -79,18 +79,17 @@ __global__ void volrender_backward_cuda(
     float* t_hit,
     int* num_hits,
     int* indices,
-    int width,
-    int height,
+    int batch_size,
     int num_samples_per_hit,
     __half* radiance_gradients
 ) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
-    int y = threadIdx.y + blockIdx.y * blockDim.y;
-    if(x >= width || y >= height) {
+    
+    if(x >= batch_size) {
         return;
     }
 
-    int ray_idx = x + y * width;
+    int ray_idx = x;
     int start_index = indices[ray_idx];
     int num_ray_hits = num_hits[ray_idx];
     float transmittance = 0.0f;
@@ -171,14 +170,12 @@ void launch_volrender_backward_cuda(
     float* t_hit,
     int* num_hits,
     int* indices,
-    int width,
-    int height,
+    int batch_size,
     int num_samples_per_hit,
     __half* radiance_gradients
 ) {
-    dim3 threadsPerBlock(32, 32);
-    dim3 numBlocks((width + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                   (height + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    dim3 threadsPerBlock(1024);
+    dim3 numBlocks((batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x);
     volrender_backward_cuda<<<numBlocks, threadsPerBlock>>>(
         loss_values,
         loss_gradients,
@@ -186,8 +183,7 @@ void launch_volrender_backward_cuda(
         t_hit,
         num_hits,
         indices,
-        width,
-        height,
+        batch_size,
         num_samples_per_hit,
         radiance_gradients
     );

@@ -716,24 +716,25 @@ int main() {
             model.loss->evaluate(1.0f, predicted_image, target_image, values, gradients);
             float batch_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference_stream);
             std::cout << "Batch Loss: " << batch_loss << std::endl;
-            break;
             
             
             tcnn::network_precision_t* d_loss_mlp;
             CUDA_CHECK(cudaMalloc((void**)&d_loss_mlp, sizeof(tcnn::network_precision_t) * 16 * num_sampled_points));
+            
             launch_volrender_backward_cuda(
                 values.data(),
                 gradients.data(),
                 d_sampled_points_radiance,
                 d_t_vals,
-                d_num_hits,
+                d_batch_num_hits,
                 d_batch_hit_inds,
-                width,
-                height,
+                batch_size,
                 samples_per_intersect,
                 d_loss_mlp
             );
-
+            printf("Done Volume Rendering Backward Kernel\n");
+            tcnn::GPUMatrix<tcnn::network_precision_t> loss_mlp(d_loss_mlp, num_sampled_points, 16);
+            model.network->backward(ctx, input_batch, output_fwd, loss_mlp);
 
 
 	    break;
