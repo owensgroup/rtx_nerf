@@ -181,7 +181,7 @@ void printGPUMem() {
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
-#define BATCH_SIZE tcnn::BATCH_SIZE_GRANULARITY*128
+#define BATCH_SIZE tcnn::BATCH_SIZE_GRANULARITY*160
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
@@ -307,6 +307,7 @@ int main() {
     int n_output_dims = 4;
     int batch_size = BATCH_SIZE;
     auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
+    model.optimizer->allocate(model.network);
     int num_epochs = EPOCHS;
     std::cout << "---------------------- Loading Data ----------------------\n";
     // Loads the Training, validation, and test sets from the synthetic lego scene
