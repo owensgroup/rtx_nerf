@@ -283,6 +283,14 @@ __global__ void print_float4_arr(float* arr, int size) {
     printf("\n");
 }
 
+struct RayPayload {
+    int num_hits;
+    float3 origin;
+    float2 view_dir;
+    float* t_start;
+    float* t_end;
+};
+
 int main() {
     // load data from files
     // TODO: take images and poses from json and load into DataLoader
@@ -344,29 +352,157 @@ int main() {
     CUDA_CHECK(cudaMalloc((void **)&d_image, image_size * sizeof(float)));
     CUDA_CHECK(cudaMalloc((void **)&d_look_at, 16 * sizeof(float)));
     std::cout << "Image Buffers Allocated on GPU" << std::endl;
+
+    // first generate rays for each pixel
+
     // Allocate buffers to hold outputs from ray intersection tests
     // start and end points are equal to # of AABBs in AS per ray [width * height * num_primitives]
     float3 *d_start_points;
     float3 *d_end_points;
+    float3 *d_ray_origins;
     int *d_num_hits;
     float2 *d_view_dir;
     float* d_pixels;
     float* d_temp_out;
+    float* d_t_start;
+    float* d_t_end;
     tcnn::network_precision_t* d_pixels_half;
-    CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float) * 3));
+
+    CUDA_CHECK(cudaMalloc((void**)&d_ray_origins, width * height * sizeof(float3)));
+    CUDA_CHECK(cudaMalloc((void**)&d_t_start, width * height * 3 * grid_resolution * sizeof(float)));
+    CUDA_CHECK(cudaMalloc((void**)&d_t_end, width * height * 3 * grid_resolution * sizeof(float)));
     CUDA_CHECK(cudaMalloc((void **)&d_start_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_end_points, width * height * 3 * grid_resolution * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_num_hits, width * height * sizeof(int)));
     CUDA_CHECK(cudaMalloc((void **)&d_view_dir, width * height * sizeof(float2)));
+    std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
+
+    CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float) * 3));
     CUDA_CHECK(cudaMalloc((void **)&d_temp_out, batch_size * n_output_dims * sizeof(float)));
     CUDA_CHECK(cudaMalloc((void **)&d_pixels_half, width * height * sizeof(tcnn::network_precision_t) * 3));
-    std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
+    
 
     
 
     Params *d_param;
     CUDA_CHECK(cudaMalloc((void **)&d_param, sizeof(Params)));
     std::cout << "Params Buffer Allocated on GPU" << std::endl;
+
+    float3* h_origin;
+    float2* h_view_dir;
+    int* h_num_hits;
+    float* h_t_start;
+    float* h_t_end;
+
+    h_origin = (float3*)malloc(width * height * sizeof(float3));
+    h_view_dir = (float2*)malloc(width * height * sizeof(float2));
+    h_num_hits = (int*)malloc(width * height * sizeof(int));
+    h_t_start = (float*)malloc(width * height * 3 * grid_resolution * sizeof(float));
+    h_t_end = (float*)malloc(width * height * 3 * grid_resolution * sizeof(float));
+
+    std::vector<RayPayload> ray_payloads;
+    // Loop through training data and build dataset
+    // dataset consists of ray_payloads and ground truth pixel colors
+    // ray_payloads: (origin, dir, num_hits, t_start, t_end)
+    for(int i = 0; i < training_images.size(); i++) {
+        float* image = training_images[i];
+        float* look_at = training_poses[i];
+        // transfer image and look_at to GPU
+        
+
+        CUDA_CHECK(cudaMemcpyAsync(d_image, image, image_size * sizeof(float), cudaMemcpyHostToDevice, inference_stream));
+        CUDA_CHECK(cudaMemcpyAsync(d_look_at, look_at, 16 * sizeof(float), cudaMemcpyHostToDevice, inference_stream));
+
+        // Memset ray intersection buffers
+        CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
+        CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
+        CUDA_CHECK(cudaMemset(d_t_start, -2, width * height * 3 * grid_resolution * sizeof(float)));
+        CUDA_CHECK(cudaMemset(d_t_end, -2, width * height * 3 * grid_resolution * sizeof(float)));
+        CUDA_CHECK(cudaMemset(d_view_dir, -2, width * height * sizeof(float2)));
+        CUDA_CHECK(cudaMemset(d_ray_origins, -2, width * height * sizeof(float3))); 
+        CUDA_CHECK(cudaMemset(d_num_hits, 0, width * height * sizeof(int)));
+
+        Params params;
+        // params.transform_matrix = transform_matrix;
+        float d =  2.0f / grid_resolution;
+        params.delta = make_float3(d, d, d);
+        params.min_point = make_float3(-1, -1, -1);
+        params.max_point = make_float3(1, 1, 1);
+        params.intersection_arr_size = 3 * grid_resolution;
+        params.width = width;
+        params.height = height;
+        params.focal_length = focal_length;
+        params.aspect_ratio = aspect_ratio;
+        params.handle = rtx_dataholder->gas_handle;
+        params.aabb = d_aabb;
+        params.start_points = d_start_points;
+        params.end_points = d_end_points;
+        params.t_start = d_t_start;
+        params.t_end = d_t_end;
+        params.num_hits = d_num_hits;
+        params.num_primitives = num_primitives;
+        params.look_at = d_look_at;
+        params.viewing_direction = d_view_dir;
+        params.ray_origins = d_ray_origins;
+
+        CUDA_CHECK(cudaMemcpy(d_param, &params, sizeof(params), cudaMemcpyHostToDevice));
+        const OptixShaderBindingTable &sbt_ray_march = rtx_dataholder->sbt_ray_march;
+        std::cout << "Launching Ray Tracer in Ray Marching Mode (" << width*height << " rays)\n";
+        OPTIX_CHECK(optixLaunch(rtx_dataholder->pipeline_ray_march, inference_stream,
+                                reinterpret_cast<CUdeviceptr>(d_param),
+                                sizeof(Params), &sbt_ray_march, width, height, 1));
+        CUDA_CHECK(cudaStreamSynchronize(inference_stream));
+        d_start_points = params.start_points;
+        d_end_points = params.end_points;
+        d_t_start = params.t_start;
+        d_t_end = params.t_end;
+        d_num_hits = params.num_hits;
+        d_ray_origins = params.ray_origins;
+
+        CUDA_CHECK(cudaMemcpy(h_origin, d_ray_origins, width * height * sizeof(float3), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_view_dir, d_view_dir, width * height * sizeof(float2), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_num_hits, d_num_hits, width * height * sizeof(int), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_t_start, d_t_start, width * height * 3 * grid_resolution * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_t_end, d_t_end, width * height * 3 * grid_resolution * sizeof(float), cudaMemcpyDeviceToHost));
+
+        for(int i = 0; i < width * height; i++) {
+            RayPayload payload;
+            payload.origin = h_origin[i];
+            payload.view_dir = h_view_dir[i];
+            payload.num_hits = h_num_hits[i];
+            payload.t_start = (float*)malloc(h_num_hits[i] * sizeof(float));
+            payload.t_end = (float*)malloc(h_num_hits[i] * sizeof(float));
+            for(int j = 0; j < payload.num_hits; j++) {
+                payload.t_start[j] = h_t_start[i * 3 * grid_resolution + j];
+                payload.t_end[j] = h_t_end[i * 3 * grid_resolution + j];
+            }
+            ray_payloads.push_back(payload);
+        }
+    }
+
+    std::cout << "# of ray payloads: " << ray_payloads.size() << std::endl;
+
+    // Print 10 random payloads from ray_payloads
+    std::cout << "Random Ray Payloads:" << std::endl;
+    for (int i = 0; i < 10; i++) {
+        int random_index = rand() % ray_payloads.size();
+        RayPayload random_payload = ray_payloads[random_index];
+        std::cout << "Payload " << i+1 << ":" << std::endl;
+        std::cout << "Origin: (" << random_payload.origin.x << ", " << random_payload.origin.y << ", " << random_payload.origin.z << ")" << std::endl;
+        std::cout << "View Direction: (" << random_payload.view_dir.x << ", " << random_payload.view_dir.y << ")" << std::endl;
+        std::cout << "Number of Hits: " << random_payload.num_hits << std::endl;
+        std::cout << "T Start: ";
+        for (int j = 0; j < random_payload.num_hits; j++) {
+            std::cout << random_payload.t_start[j] << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "T End: ";
+        for (int j = 0; j < random_payload.num_hits; j++) {
+            std::cout << random_payload.t_end[j] << " ";
+        }
+        std::cout << std::endl << std::endl;
+    }
+    
 
     // We train our neural network for a specific amount of epochs
     for (int j = 0; j < num_epochs; ++j) {
@@ -385,6 +521,8 @@ int main() {
             // Memset ray intersection buffers
             CUDA_CHECK(cudaMemset(d_start_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
             CUDA_CHECK(cudaMemset(d_end_points, -2, width * height * 3 * grid_resolution * sizeof(float3)));
+            CUDA_CHECK(cudaMemset(d_t_start, -2, width * height * 3 * grid_resolution * sizeof(float)));
+            CUDA_CHECK(cudaMemset(d_t_end, -2, width * height * 3 * grid_resolution * sizeof(float)));
             CUDA_CHECK(cudaMemset(d_num_hits, 0, width * height * sizeof(int)));
 
             // Algorithmic parameters and data pointers used in GPU program
@@ -403,6 +541,8 @@ int main() {
             params.aabb = d_aabb;
             params.start_points = d_start_points;
             params.end_points = d_end_points;
+            params.t_start = d_t_start;
+            params.t_end = d_t_end;
             params.num_hits = d_num_hits;
             params.num_primitives = num_primitives;
             params.look_at = d_look_at;
