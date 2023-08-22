@@ -181,7 +181,7 @@ void printGPUMem() {
 //auto model = tcnn::create_from_config(n_input_dims, n_output_dims, config);
 
 #define EPOCHS 10
-#define BATCH_SIZE tcnn::BATCH_SIZE_GRANULARITY
+#define BATCH_SIZE tcnn::BATCH_SIZE_GRANULARITY*256
 #define DATASET_SIZE 1000
 
 RTXDataHolder *rtx_dataholder;
@@ -386,9 +386,9 @@ int main() {
     CUDA_CHECK(cudaMalloc((void **)&d_view_dir, width * height * sizeof(float2)));
     std::cout << "Ray Intersection Buffers Allocated on GPU" << std::endl;
 
-    CUDA_CHECK(cudaMalloc((void**)&d_pixels, width * height * sizeof(float) * 3));
+    CUDA_CHECK(cudaMalloc((void**)&d_pixels, batch_size * sizeof(float) * 3));
     CUDA_CHECK(cudaMalloc((void **)&d_temp_out, batch_size * n_output_dims * sizeof(float)));
-    CUDA_CHECK(cudaMalloc((void **)&d_pixels_half, width * height * sizeof(tcnn::network_precision_t) * 3));
+    CUDA_CHECK(cudaMalloc((void **)&d_pixels_half, batch_size * sizeof(tcnn::network_precision_t) * 3));
     
 
     
@@ -558,6 +558,7 @@ int main() {
     h_view_dir = (float2*)malloc(batch_size * sizeof(float2));
 
     float* d_gt_pixels;
+    
     int* d_batch_num_hits;
     CUDA_CHECK(cudaMalloc((void **)&d_gt_pixels, batch_size * sizeof(float3)));
     CUDA_CHECK(cudaMalloc((void **)&d_batch_num_hits, batch_size * sizeof(int)));
@@ -665,46 +666,27 @@ int main() {
                 batch_size, grid_resolution,
                 d_batch_num_hits, d_batch_hit_inds,
                 SAMPLING_REGULAR, inference_stream);
-            break;
+            
             
             uint32_t padded_output_width = model.network->padded_output_width();
-            tcnn::GPUMatrix<float> input_batch(n_input_dims, batch_size);
-            tcnn::GPUMatrix<tcnn::network_precision_t> output_fwd(padded_output_width, batch_size);
-            std::vector<std::unique_ptr<tcnn::Context>> contexts;
+            tcnn::GPUMatrix<float> input_batch(n_input_dims, num_sampled_points);
+            tcnn::GPUMatrix<tcnn::network_precision_t> output_fwd(padded_output_width, num_sampled_points);
+            
             printGPUMem();
-            for(int i = 0; i < num_sampled_points; i+=batch_size) {
-                
-                unsigned int offset = i * n_input_dims;
-                CUDA_CHECK(cudaMemcpy(
-                    input_batch.data(),
-                    d_sampled_points + offset,
-                    batch_size * n_input_dims * sizeof(float),
-                    cudaMemcpyDeviceToDevice));
-                
-                
-                auto ctx = model.network->forward(inference_stream, input_batch, &output_fwd, true);
-                contexts.push_back(std::move(ctx));
-                tcnn::GPUMatrix<tcnn::network_precision_t> output_slice = output_fwd.slice_rows(0, n_output_dims);
-
-                // convert output_fwd to float
-                int num_el = output_fwd.n_elements();
-                int blockSize = 1024;
-                int numBlocks = (num_el + blockSize - 1) / blockSize;
-                convertHalfToFloat<<<numBlocks,blockSize>>>(output_slice.data(), d_temp_out, batch_size * n_output_dims);
-                CUDA_CHECK(cudaDeviceSynchronize());
-                CUDA_CHECK(cudaMemcpy(
-                    d_sampled_points_radiance + i * 4,
-                    d_temp_out,
-                    batch_size * n_output_dims * sizeof(float),
-                    cudaMemcpyDeviceToDevice));
-                
-            }
-            printGPUMem();
+            printf("Launching Forward Pass\n");
+            auto ctx = model.network->forward(inference_stream, input_batch, &output_fwd, true, true);
+            printf("Done Forward Pass\n");
+            tcnn::GPUMatrix<tcnn::network_precision_t> output_slice = output_fwd.slice_rows(0, n_output_dims);
+            
+            int num_el = output_slice.n_elements();
+            int blockSize1 = 1024;
+            int numBlocks1 = (num_el + blockSize1 - 1) / blockSize1;
+            convertHalfToFloat<<<numBlocks1,blockSize1>>>(output_slice.data(), d_sampled_points_radiance, num_el);
             //print radiance buffer values
-            printf("Printing radiance buffer values\n");
-            print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
-            CUDA_CHECK(cudaDeviceSynchronize());
-
+            // printf("Printing radiance buffer values\n");
+            // print_float4_arr<<<1,1>>>(d_sampled_points_radiance, num_sampled_points);
+            // CUDA_CHECK(cudaDeviceSynchronize());
+            
             // Launch Volume Rendering kernel
             printf("Launching Volume Rendering Kernel\n");
             
@@ -712,42 +694,30 @@ int main() {
             launch_volrender_cuda(
                 d_sampled_points,
                 d_sampled_points_radiance,
-                d_num_hits,
+                d_batch_num_hits,
                 d_batch_hit_inds,
                 d_t_vals,
-                width,
-                height,
+                batch_size,
                 samples_per_intersect,
                 d_pixels
             );
-            
-            
-            // initialize host pixels
-            float* h_pixels = new float[width * height * 3];
-            // copy pixels to host
-            CUDA_CHECK(cudaMemcpy(
-                h_pixels,
-                d_pixels,
-                width * height * sizeof(float) * 3,
-                cudaMemcpyDeviceToHost));
+            printf("Done Volume Rendering Kernel\n");
+            // print pixel buffer values
+            printf("Printing pixel buffer values\n");
+            print_float_arr<<<1,1>>>(d_pixels, batch_size);
             CUDA_CHECK(cudaDeviceSynchronize());
-            
-            // save pixels to png file with stb
-            stbi_write_png("output.png", width, height, 3, h_pixels, width);
-            size_t bufferSize = width * height * channels;
-            int blockSize = 256;
-            int numBlocks = (bufferSize + blockSize - 1) / blockSize;
-            floatToHalf<<<numBlocks, blockSize>>>(d_pixels, d_pixels_half, bufferSize);
-            cudaDeviceSynchronize();
-            tcnn::GPUMatrix<tcnn::network_precision_t> predicted_image(d_pixels_half, width * height, channels);
-
-            // tcnn compute loss and backpropagate
-            tcnn::GPUMatrix<float> target_image(d_image, width * height, channels);
-            tcnn::GPUMatrix<float> values(width * height, channels);
-            tcnn::GPUMatrix<tcnn::network_precision_t> gradients(width * height, channels);
+            int blockSize2 = 1024;
+            int numBlocks2 = (batch_size + blockSize2 - 1) / blockSize2;
+            floatToHalf<<<numBlocks2, blockSize2>>>(d_pixels, d_pixels_half, batch_size);
+            tcnn::GPUMatrix<tcnn::network_precision_t> predicted_image(d_pixels_half, batch_size, channels);
+            tcnn::GPUMatrix<float> target_image(d_gt_pixels, batch_size, channels);
+            tcnn::GPUMatrix<float> values(batch_size, channels);
+            tcnn::GPUMatrix<tcnn::network_precision_t> gradients(batch_size, channels);
             model.loss->evaluate(1.0f, predicted_image, target_image, values, gradients);
-            float image_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference_stream);
-            std::cout << "Image Loss: " << image_loss << std::endl;
+            float batch_loss = tcnn::reduce_sum(values.data(), values.n_elements(), inference_stream);
+            std::cout << "Batch Loss: " << batch_loss << std::endl;
+            break;
+            
             
             tcnn::network_precision_t* d_loss_mlp;
             CUDA_CHECK(cudaMalloc((void**)&d_loss_mlp, sizeof(tcnn::network_precision_t) * 16 * num_sampled_points));

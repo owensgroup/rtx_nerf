@@ -22,17 +22,16 @@ __global__ void volrender_cuda(
     int* num_hits,
     int* indices,
     float* ray_hit,
-    int width,
-    int height,
+    int batch_size,
     int num_samples_per_hit,
     float* pixels) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
-    int y = threadIdx.y + blockIdx.y * blockDim.y;
-    if(x >= width || y >= height) {
+    
+    if(x >= batch_size) {
         return;
     }
 
-    int ray_idx = x + y * width;
+    int ray_idx = x;
     int start_index = indices[ray_idx];
     int num_ray_hits = num_hits[ray_idx];
     float transmittance = 0.0f;
@@ -149,23 +148,20 @@ void launch_volrender_cuda(
     int* num_hits,
     int* indices,
     float* ray_hit,
-    int width,
-    int height,
+    int batch_size,
     int num_samples_per_hit,
     float* pixels) {
-    dim3 threadsPerBlock(32, 32);
-    dim3 numBlocks((width + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                   (height + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    volrender_cuda<<<numBlocks, threadsPerBlock>>>(
-        network_inputs,
-        network_outputs,
-        num_hits,
-        indices,
-        ray_hit,
-        width,
-        height,
-        num_samples_per_hit,
-        pixels);
+        int block_size = 1024;
+        int num_blocks = (batch_size + block_size - 1) / block_size;
+        volrender_cuda<<<num_blocks, block_size>>>(
+            network_inputs,
+            network_outputs,
+            num_hits,
+            indices,
+            ray_hit,
+            batch_size,
+            num_samples_per_hit,
+            pixels);
 }
 
 void launch_volrender_backward_cuda(

@@ -8,8 +8,7 @@ void launch_volrender_cuda(
     int* num_hits,
     int* indices,
     float* ray_hit,
-    int width,
-    int height,
+    int batch_size,
     int num_samples_per_hit,
     float* pixels);
 
