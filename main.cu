@@ -291,6 +291,20 @@ __global__ void print_float4_arr(float* arr, int size) {
     printf("\n");
 }
 
+__global__ void print_half_buffer(__half* arr, int size) {
+    printf("Printing half buffer\n");
+    printf("Printing first 32 points \n");
+    for(int i = 0; i < 32; ++i) {
+        printf("%f ", __half2float(arr[i]));
+    }
+    printf("\n");
+    printf("Printing last 32 points \n");
+    for(int i = size-32; i < size; ++i) {
+        printf("%f ", __half2float(arr[i]));
+    }
+    printf("\n");
+}
+
 struct RayPayload {
     int num_hits;
     float3 origin;
@@ -761,6 +775,7 @@ int main() {
                 samples_per_intersect,
                 d_loss_mlp
             );
+            print_half_buffer<<<1,1>>>(d_, n_params);
             // printf("Done Volume Rendering Backward Kernel\n");
             tcnn::GPUMatrix<tcnn::network_precision_t> loss_mlp(d_loss_mlp, 16, num_sampled_points);
             model.network->backward(training_stream, *ctx, input_batch, output_fwd, loss_mlp);
@@ -768,6 +783,7 @@ int main() {
             // print params buffr
             // printf("Printing params buffer values\n");
             // print_float_arr<<<1,1>>>(params_full_precision, n_params);
+            print_half_buffer<<<1,1>>>(params_gradients, n_params);
             model.optimizer->step(training_stream, 1.0, params_full_precision, params, params_gradients);
             CUDA_CHECK(cudaDeviceSynchronize());
             // print params buffr
