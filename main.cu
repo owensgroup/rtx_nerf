@@ -327,6 +327,17 @@ int main() {
     params_inference = params;
     model.network->set_params(params, params_inference, params_gradients);
 
+    uint32_t seed = 1337;
+    std::seed_seq seq{seed};
+    std::vector<uint32_t> seeds(2);
+    seq.generate(std::begin(seeds), std::end(seeds));
+    auto rng = tcnn::pcg32{seeds.front()};
+    model.network->initialize_params(rng, params_full_precision);
+    tcnn::parallel_for_gpu(n_params, [params_fp=params_full_precision, params=params] __device__ (size_t i) {
+        params[i] = (tcnn::network_precision_t)params_fp[i];
+    });
+    CUDA_CHECK(cudaDeviceSynchronize());
+
     int num_epochs = EPOCHS;
     std::cout << "---------------------- Loading Data ----------------------\n";
     // Loads the Training, validation, and test sets from the synthetic lego scene
@@ -585,17 +596,15 @@ int main() {
     int* d_batch_hit_inds;
     // We train our neural network for a specific amount of epochs
     for (int j = 0; j < num_epochs; ++j) {
-        std::printf("Started training loop epoch %d\n", j);
+        std::printf("Shuffling dataloader for epoch %d\n", j);
         // shuffle ray payloads
         std::random_shuffle(ray_payloads.begin(), ray_payloads.end());
+        std::printf("---------------------- Starting epoch %d --------------------------\n", j);
+        int num_iter = ray_payloads.size() / batch_size + 1;
         // Loop through each set of images and poses in our training dataset
         for(int i = 0; i < ray_payloads.size(); i+=batch_size) {
-            // get batch_size ray payloads from ray_payloads
-            // std::cout << "Getting batch of ray payloads \n";
+            printf("Iteration %d/%d\n", i/batch_size, num_iter);
             std::vector<RayPayload> batch_ray_payloads(ray_payloads.begin() + i, ray_payloads.begin() + i + batch_size);
-            // store num_hits in ray payloads in h_batch_num_hits
-
-            // std::cout << "Going from AOS to SOA \n";
             for(int k = 0; k < batch_size; k++) {
                 h_batch_num_hits[k] = batch_ray_payloads[k].num_hits;
                 h_gt_pixels[k] = batch_ray_payloads[k].pixel_color_gt;
@@ -645,7 +654,7 @@ int main() {
             CUDA_CHECK(cudaMalloc((void **)&d_end_points, num_points * sizeof(float3)));
             // CUDA_CHECK(cudaMalloc((void **)&d_t_end, num_points * sizeof(float)));
 
-            std::cout << "Copying start_points, end_points, and t_end to GPU \n";
+            // std::cout << "Copying start_points, end_points, and t_end to GPU \n";
             CUDA_CHECK(cudaMemcpyAsync(d_start_points, h_start_points, num_points * sizeof(float3), cudaMemcpyHostToDevice));
             CUDA_CHECK(cudaMemcpyAsync(d_end_points, h_end_points, num_points * sizeof(float3), cudaMemcpyHostToDevice));
             // CUDA_CHECK(cudaMemcpyAsync(d_t_end, h_t_end, num_points * sizeof(float), cudaMemcpyHostToDevice));
@@ -677,7 +686,7 @@ int main() {
             // print_float3_arr<<<1,1>>>(d_end_points, num_points);
             // CUDA_CHECK(cudaDeviceSynchronize());
 
-            std::cout << "Launching Sampling Kernel \n";
+            // std::cout << "Launching Sampling Kernel \n";
             launchSampler(
                 d_start_points,
                 d_end_points,
@@ -694,9 +703,9 @@ int main() {
             tcnn::GPUMatrix<tcnn::network_precision_t> output_fwd(padded_output_width, num_sampled_points);
             
             // printGPUMem();
-            printf("Launching Forward Pass\n");
+            // printf("Launching Forward Pass\n");
             auto ctx = model.network->forward(inference_stream, input_batch, &output_fwd, true, true);
-            printf("Done Forward Pass\n");
+            // printf("Done Forward Pass\n");
             tcnn::GPUMatrix<tcnn::network_precision_t> output_slice = output_fwd.slice_rows(0, n_output_dims);
             
             int num_el = output_slice.n_elements();
@@ -709,7 +718,7 @@ int main() {
             // CUDA_CHECK(cudaDeviceSynchronize());
             
             // Launch Volume Rendering kernel
-            printf("Launching Volume Rendering Kernel\n");
+            // printf("Launching Volume Rendering Kernel\n");
             
             launch_volrender_cuda(
                 d_sampled_points,
@@ -755,9 +764,16 @@ int main() {
             // printf("Done Volume Rendering Backward Kernel\n");
             tcnn::GPUMatrix<tcnn::network_precision_t> loss_mlp(d_loss_mlp, 16, num_sampled_points);
             model.network->backward(training_stream, *ctx, input_batch, output_fwd, loss_mlp);
-            model.optimizer->step(training_stream, 1.0, params_full_precision, params, params_gradients);
 
-            printGPUMem();
+            // print params buffr
+            // printf("Printing params buffer values\n");
+            // print_float_arr<<<1,1>>>(params_full_precision, n_params);
+            model.optimizer->step(training_stream, 1.0, params_full_precision, params, params_gradients);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            // print params buffr
+            // printf("Printing params buffer values\n");
+            // print_float_arr<<<1,1>>>(params_full_precision, n_params);
+            // printGPUMem();
             // free buffers
             cudaFree(d_sampled_points);
             cudaFree(d_sampled_points_radiance);
@@ -768,9 +784,8 @@ int main() {
             free(h_start_points);
             free(h_end_points);
             // std::cout << "Done freeing buffers \n";
-            printGPUMem();
+            // printGPUMem();
         }
-        break;
     }
     return 0;
 }
